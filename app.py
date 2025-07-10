@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, date
 import openpyxl
 from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 import os
 import io
 
@@ -84,6 +85,9 @@ def get_produtos():
 @app.route('/api/produtos', methods=['POST'])
 def adicionar_produto():
     data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
     produto = Produto(
         nome=data['nome'],
         quantidade=data['quantidade'],
@@ -98,6 +102,9 @@ def adicionar_produto():
 def atualizar_produto(id):
     produto = Produto.query.get_or_404(id)
     data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
     produto.nome = data['nome']
     produto.quantidade = data['quantidade']
     produto.valor_custo = data['valor_custo']
@@ -116,6 +123,8 @@ def deletar_produto(id):
 @app.route('/api/vendas', methods=['POST'])
 def registrar_venda():
     data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
     
     # Criar venda
     venda = Venda(
@@ -181,47 +190,49 @@ def gerar_relatorio(data):
     # Criar planilha Excel
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"Relatório {data_relatorio.strftime('%d/%m/%Y')}"
-    
-    # Cabeçalhos
-    headers = ['Horário', 'Valor', 'Produto(s)', 'Tipo de Pagamento', 'Cliente']
-    for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal='center')
-    
-    # Dados
-    row = 2
-    for venda in vendas:
-        # Preparar lista de produtos
-        produtos_str = []
-        for item in venda.produtos_vendidos:
-            produtos_str.append(f"{item.produto.nome} ({item.quantidade})")
+    if ws is not None:
+        ws.title = f"Relatório {data_relatorio.strftime('%d/%m/%Y')}"
         
-        # Tipo de pagamento com parcelas se aplicável
-        tipo_pagamento = venda.tipo_pagamento
-        if venda.tipo_pagamento == 'Parcelamento' and venda.parcelas > 1:
-            tipo_pagamento = f"Parcelamento ({venda.parcelas}x)"
+        # Cabeçalhos
+        headers = ['Horário', 'Valor', 'Produto(s)', 'Tipo de Pagamento', 'Cliente']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
         
-        ws.cell(row=row, column=1, value=venda.data_venda.strftime('%d/%m/%Y %H:%M'))
-        ws.cell(row=row, column=2, value=f"R$ {venda.valor_total:.2f}")
-        ws.cell(row=row, column=3, value=", ".join(produtos_str))
-        ws.cell(row=row, column=4, value=tipo_pagamento)
-        ws.cell(row=row, column=5, value=venda.cliente or '')
-        row += 1
-    
-    # Ajustar largura das colunas
-    for column in ws.columns:
-        max_length = 0
-        column_letter = column[0].column_letter
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = min(max_length + 2, 50)
-        ws.column_dimensions[column_letter].width = adjusted_width
+        # Dados
+        row = 2
+        for venda in vendas:
+            # Preparar lista de produtos
+            produtos_str = []
+            for item in venda.produtos_vendidos:
+                produtos_str.append(f"{item.produto.nome} ({item.quantidade})")
+            
+            # Tipo de pagamento com parcelas se aplicável
+            tipo_pagamento = venda.tipo_pagamento
+            if venda.tipo_pagamento == 'Parcelamento' and venda.parcelas > 1:
+                tipo_pagamento = f"Parcelamento ({venda.parcelas}x)"
+            
+            ws.cell(row=row, column=1, value=venda.data_venda.strftime('%d/%m/%Y %H:%M'))
+            ws.cell(row=row, column=2, value=f"R$ {venda.valor_total:.2f}")
+            ws.cell(row=row, column=3, value=", ".join(produtos_str))
+            ws.cell(row=row, column=4, value=tipo_pagamento)
+            ws.cell(row=row, column=5, value=venda.cliente or '')
+            row += 1
+        
+        # Ajustar largura das colunas
+        for i, column in enumerate(ws.columns):
+            max_length = 0
+            column_letter = get_column_letter(i + 1)
+            
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
     
     # Salvar em buffer
     output = io.BytesIO()

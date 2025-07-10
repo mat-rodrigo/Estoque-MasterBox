@@ -7,7 +7,7 @@
     <div class="col-12">
         <h2 class="text-center">
             <i class="fas fa-shopping-cart text-success me-3"></i>
-            Teste de Vendas (Versão Simplificada)
+            Vendas Simples
         </h2>
     </div>
 </div>
@@ -42,6 +42,22 @@
                 </div>
                 
                 <div class="mb-3">
+                    <button type="button" class="btn btn-primary" onclick="adicionarProduto()">
+                        <i class="fas fa-plus me-2"></i>
+                        Adicionar Produto
+                    </button>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <h6>Produtos Selecionados:</h6>
+                    <div id="lista-produtos" class="border rounded p-2" style="min-height: 100px;">
+                        <p class="text-muted text-center mb-0">Nenhum produto selecionado</p>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
                     <label class="form-label">Tipo de Pagamento:</label>
                     <select class="form-control" id="tipo-pagamento">
                         <option value="">Selecione o tipo de pagamento</option>
@@ -52,6 +68,11 @@
                         <option value="Parcelamento">Parcelamento</option>
                         <option value="Complemento">Complemento</option>
                     </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Cliente (opcional):</label>
+                    <input type="text" class="form-control" id="cliente" placeholder="Nome do cliente">
                 </div>
                 
                 <div class="mb-3">
@@ -111,9 +132,10 @@
 <script>
 let produtos = [];
 let vendas = [];
+let produtosSelecionados = [];
 
 $(document).ready(function() {
-    console.log('=== PÁGINA DE TESTE CARREGADA ===');
+    console.log('=== PÁGINA DE VENDAS SIMPLES CARREGADA ===');
     console.log('jQuery disponível:', typeof $ !== 'undefined');
     console.log('Elementos encontrados:');
     console.log('- #produto-select:', $('#produto-select').length);
@@ -124,8 +146,15 @@ $(document).ready(function() {
     carregarVendas();
     
     // Eventos
-    $('#produto-select').on('change', calcularTotal);
-    $('#quantidade').on('input', calcularTotal);
+    $('#produto-select').on('change', function() {
+        const produtoId = $(this).val();
+        if (produtoId) {
+            const produto = produtos.find(p => p.id == produtoId);
+            if (produto) {
+                $('#quantidade').attr('max', produto.quantidade);
+            }
+        }
+    });
 });
 
 function carregarProdutos() {
@@ -141,8 +170,10 @@ function carregarProdutos() {
         select.empty().append('<option value="">Selecione um produto</option>');
         
         produtos.forEach(function(produto) {
-            const option = `<option value="${produto.id}" data-preco="${produto.valor_custo}">${produto.nome} (Estoque: ${produto.quantidade})</option>`;
-            select.append(option);
+            if (produto.quantidade > 0) {
+                const option = `<option value="${produto.id}" data-preco="${produto.valor_custo}">${produto.nome} (Estoque: ${produto.quantidade})</option>`;
+                select.append(option);
+            }
         });
         
         $('#status-produtos').html(`<i class="fas fa-check-circle me-2"></i>${produtos.length} produtos carregados`);
@@ -167,43 +198,110 @@ function recarregarProdutos() {
     carregarProdutos();
 }
 
-function calcularTotal() {
-    const produtoId = $('#produto-select').val();
-    const quantidade = parseInt($('#quantidade').val()) || 0;
-    
-    if (produtoId && quantidade > 0) {
-        const produto = produtos.find(p => p.id == produtoId);
-        if (produto) {
-            const total = produto.valor_custo * quantidade;
-            $('#total').text('R$ ' + total.toFixed(2).replace('.', ','));
-        }
-    } else {
-        $('#total').text('R$ 0,00');
-    }
-}
-
-function finalizarVenda() {
+function adicionarProduto() {
     const produtoId = $('#produto-select').val();
     const quantidade = parseInt($('#quantidade').val());
-    const tipoPagamento = $('#tipo-pagamento').val();
     
-    if (!produtoId || !quantidade || !tipoPagamento) {
-        alert('Preencha todos os campos!');
+    if (!produtoId || !quantidade || quantidade <= 0) {
+        alert('Selecione um produto e uma quantidade válida!');
         return;
     }
     
     const produto = produtos.find(p => p.id == produtoId);
-    const total = produto.valor_custo * quantidade;
+    if (!produto) {
+        alert('Produto não encontrado!');
+        return;
+    }
+    
+    if (quantidade > produto.quantidade) {
+        alert(`Quantidade solicitada (${quantidade}) excede o estoque disponível (${produto.quantidade})!`);
+        return;
+    }
+    
+    // Verificar se o produto já está na lista
+    const produtoExistente = produtosSelecionados.find(p => p.id == produtoId);
+    if (produtoExistente) {
+        alert('Este produto já foi adicionado à venda!');
+        return;
+    }
+    
+    // Adicionar produto à lista
+    produtosSelecionados.push({
+        id: produtoId,
+        nome: produto.nome,
+        quantidade: quantidade,
+        valor_unitario: produto.valor_custo,
+        valor_total: produto.valor_custo * quantidade
+    });
+    
+    atualizarListaProdutos();
+    calcularTotalGeral();
+    
+    // Limpar campos
+    $('#produto-select').val('');
+    $('#quantidade').val(1);
+}
+
+function removerProduto(index) {
+    produtosSelecionados.splice(index, 1);
+    atualizarListaProdutos();
+    calcularTotalGeral();
+}
+
+function atualizarListaProdutos() {
+    const container = $('#lista-produtos');
+    
+    if (produtosSelecionados.length === 0) {
+        container.html('<p class="text-muted text-center mb-0">Nenhum produto selecionado</p>');
+        return;
+    }
+    
+    let html = '';
+    produtosSelecionados.forEach(function(produto, index) {
+        html += `
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                <div>
+                    <strong>${produto.nome}</strong><br>
+                    <small class="text-muted">${produto.quantidade} x R$ ${produto.valor_unitario.toFixed(2).replace('.', ',')} = R$ ${produto.valor_total.toFixed(2).replace('.', ',')}</small>
+                </div>
+                <button type="button" class="btn btn-sm btn-danger" onclick="removerProduto(${index})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+    });
+    container.html(html);
+}
+
+function calcularTotalGeral() {
+    const total = produtosSelecionados.reduce((sum, produto) => sum + produto.valor_total, 0);
+    $('#total').text('R$ ' + total.toFixed(2).replace('.', ','));
+}
+
+function finalizarVenda() {
+    if (produtosSelecionados.length === 0) {
+        alert('Adicione pelo menos um produto à venda!');
+        return;
+    }
+    
+    const tipoPagamento = $('#tipo-pagamento').val();
+    if (!tipoPagamento) {
+        alert('Selecione o tipo de pagamento!');
+        return;
+    }
+    
+    const cliente = $('#cliente').val() || '';
+    const total = produtosSelecionados.reduce((sum, produto) => sum + produto.valor_total, 0);
     
     const dados = {
-        cliente: 'Teste',
+        cliente: cliente,
         tipo_pagamento: tipoPagamento,
         parcelas: 1,
         valor_total: total,
-        itens: [{
-            produto_id: parseInt(produtoId),
-            quantidade: quantidade
-        }]
+        itens: produtosSelecionados.map(produto => ({
+            produto_id: parseInt(produto.id),
+            quantidade: produto.quantidade
+        }))
     };
     
     console.log('Dados da venda:', dados);
@@ -216,10 +314,14 @@ function finalizarVenda() {
         success: function(response) {
             console.log('Venda registrada:', response);
             alert('Venda registrada com sucesso!');
-            $('#produto-select').val('');
-            $('#quantidade').val(1);
+            
+            // Limpar formulário
+            produtosSelecionados = [];
+            atualizarListaProdutos();
+            calcularTotalGeral();
             $('#tipo-pagamento').val('');
-            $('#total').text('R$ 0,00');
+            $('#cliente').val('');
+            
             carregarVendas(); // Recarregar histórico após nova venda
         },
         error: function(xhr, status, error) {
