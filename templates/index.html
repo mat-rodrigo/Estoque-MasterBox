@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Início - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="text-center mb-4">
+            <i class="fas fa-mobile-alt text-primary me-3"></i>
+            Sistema de Gerenciamento de Estoque
+        </h1>
+        <p class="text-center text-muted fs-5">
+            Gerencie seu estoque e vendas de forma eficiente e organizada
+        </p>
+    </div>
+</div>
+
+<div class="row mb-5">
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-boxes fa-3x mb-3"></i>
+                <h3 class="card-title" id="total-produtos">0</h3>
+                <p class="card-text">Produtos em Estoque</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card success h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-shopping-cart fa-3x mb-3"></i>
+                <h3 class="card-title" id="total-vendas">0</h3>
+                <p class="card-text">Vendas Hoje</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card warning h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-dollar-sign fa-3x mb-3"></i>
+                <h3 class="card-title" id="faturamento-hoje">R$ 0,00</h3>
+                <p class="card-text">Faturamento Hoje</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card info h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                <h3 class="card-title" id="produtos-baixo-estoque">0</h3>
+                <p class="card-text">Baixo Estoque</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-plus-circle me-2"></i>
+                    Ações Rápidas
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-3">
+                    <a href="/estoque" class="btn btn-primary btn-lg">
+                        <i class="fas fa-boxes me-2"></i>
+                        Gerenciar Estoque
+                    </a>
+                    <a href="/vendas" class="btn btn-success btn-lg">
+                        <i class="fas fa-shopping-cart me-2"></i>
+                        Nova Venda
+                    </a>
+                    <a href="/relatorios" class="btn btn-info btn-lg">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Gerar Relatórios
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Últimas Vendas
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="ultimas-vendas">
+                    <p class="text-muted text-center">Carregando...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-warning text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Produtos com Baixo Estoque
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="produtos-baixo-estoque-lista">
+                    <p class="text-muted text-center">Carregando...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // Carregar estatísticas
+    carregarEstatisticas();
+    carregarUltimasVendas();
+    carregarProdutosBaixoEstoque();
+    
+    // Atualizar a cada 30 segundos
+    setInterval(function() {
+        carregarEstatisticas();
+        carregarUltimasVendas();
+        carregarProdutosBaixoEstoque();
+    }, 30000);
+});
+
+function carregarEstatisticas() {
+    $.get('/api/produtos', function(produtos) {
+        $('#total-produtos').text(produtos.length);
+        
+        let baixoEstoque = 0;
+        produtos.forEach(function(produto) {
+            if (produto.quantidade <= 5) {
+                baixoEstoque++;
+            }
+        });
+        $('#produtos-baixo-estoque').text(baixoEstoque);
+    });
+    
+    // Carregar vendas de hoje
+    const hoje = new Date().toISOString().split('T')[0];
+    $.get('/api/vendas', function(vendas) {
+        const vendasHoje = vendas.filter(venda => {
+            const dataVenda = venda.data_venda.split(' ')[0].split('/').reverse().join('-');
+            return dataVenda === hoje;
+        });
+        
+        $('#total-vendas').text(vendasHoje.length);
+        
+        const faturamento = vendasHoje.reduce((total, venda) => total + venda.valor_total, 0);
+        $('#faturamento-hoje').text('R$ ' + faturamento.toFixed(2).replace('.', ','));
+    });
+}
+
+function carregarUltimasVendas() {
+    $.get('/api/vendas', function(vendas) {
+        const ultimasVendas = vendas.slice(0, 5);
+        
+        if (ultimasVendas.length === 0) {
+            $('#ultimas-vendas').html('<p class="text-muted text-center">Nenhuma venda registrada</p>');
+            return;
+        }
+        
+        let html = '<div class="list-group list-group-flush">';
+        ultimasVendas.forEach(function(venda) {
+            const produtos = venda.produtos.map(p => p.nome).join(', ');
+            html += `
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${venda.data_venda}</strong><br>
+                        <small class="text-muted">${produtos}</small>
+                    </div>
+                    <span class="badge bg-success rounded-pill">R$ ${venda.valor_total.toFixed(2).replace('.', ',')}</span>
+                </div>
+            `;
+        });
+        html += '</div>';
+        $('#ultimas-vendas').html(html);
+    });
+}
+
+function carregarProdutosBaixoEstoque() {
+    $.get('/api/produtos', function(produtos) {
+        const baixoEstoque = produtos.filter(p => p.quantidade <= 5);
+        
+        if (baixoEstoque.length === 0) {
+            $('#produtos-baixo-estoque-lista').html('<p class="text-muted text-center">Nenhum produto com baixo estoque</p>');
+            return;
+        }
+        
+        let html = '<div class="table-responsive"><table class="table table-hover">';
+        html += '<thead><tr><th>Produto</th><th>Quantidade</th><th>Compatibilidade</th></tr></thead><tbody>';
+        
+        baixoEstoque.forEach(function(produto) {
+            const classeQuantidade = produto.quantidade === 0 ? 'text-danger' : 'text-warning';
+            html += `
+                <tr>
+                    <td>${produto.nome}</td>
+                    <td class="${classeQuantidade}"><strong>${produto.quantidade}</strong></td>
+                    <td><small class="text-muted">${produto.compatibilidade || 'N/A'}</small></td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table></div>';
+        $('#produtos-baixo-estoque-lista').html(html);
+    });
+}
+</script>
+{% endblock %} 

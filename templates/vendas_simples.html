@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Vendas Simples - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-center">
+            <i class="fas fa-shopping-cart text-success me-3"></i>
+            Teste de Vendas (Versão Simplificada)
+        </h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-plus-circle me-2"></i>
+                    Nova Venda
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Status do Carregamento:</label>
+                    <div id="status-produtos" class="alert alert-info">
+                        Carregando produtos...
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Produto:</label>
+                    <select class="form-select" id="produto-select">
+                        <option value="">Selecione um produto</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Quantidade:</label>
+                    <input type="number" class="form-control" id="quantidade" min="1" value="1">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Pagamento:</label>
+                    <select class="form-control" id="tipo-pagamento">
+                        <option value="">Selecione o tipo de pagamento</option>
+                        <option value="Espécie">Espécie</option>
+                        <option value="Pix">Pix</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                        <option value="Parcelamento">Parcelamento</option>
+                        <option value="Complemento">Complemento</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <h5>Total: <span id="total" class="text-success">R$ 0,00</span></h5>
+                </div>
+                
+                <button type="button" class="btn btn-success" onclick="finalizarVenda()">
+                    <i class="fas fa-check me-2"></i>
+                    Finalizar Venda
+                </button>
+                
+                <button type="button" class="btn btn-secondary ms-2" onclick="recarregarProdutos()">
+                    <i class="fas fa-sync-alt me-2"></i>
+                    Recarregar Produtos
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history me-2"></i>
+                    Histórico de Vendas
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tabela-vendas">
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Cliente</th>
+                                <th>Produtos</th>
+                                <th>Valor</th>
+                                <th>Pagamento</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>
+                                    Carregando vendas...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let produtos = [];
+let vendas = [];
+
+$(document).ready(function() {
+    console.log('=== PÁGINA DE TESTE CARREGADA ===');
+    console.log('jQuery disponível:', typeof $ !== 'undefined');
+    console.log('Elementos encontrados:');
+    console.log('- #produto-select:', $('#produto-select').length);
+    console.log('- #status-produtos:', $('#status-produtos').length);
+    console.log('- #tabela-vendas:', $('#tabela-vendas').length);
+    
+    carregarProdutos();
+    carregarVendas();
+    
+    // Eventos
+    $('#produto-select').on('change', calcularTotal);
+    $('#quantidade').on('input', calcularTotal);
+});
+
+function carregarProdutos() {
+    console.log('Iniciando carregamento de produtos...');
+    $('#status-produtos').html('<i class="fas fa-spinner fa-spin me-2"></i>Carregando produtos...');
+    
+    $.get('/api/produtos', function(data) {
+        console.log('Resposta da API:', data);
+        produtos = data;
+        
+        // Atualizar select
+        const select = $('#produto-select');
+        select.empty().append('<option value="">Selecione um produto</option>');
+        
+        produtos.forEach(function(produto) {
+            const option = `<option value="${produto.id}" data-preco="${produto.valor_custo}">${produto.nome} (Estoque: ${produto.quantidade})</option>`;
+            select.append(option);
+        });
+        
+        $('#status-produtos').html(`<i class="fas fa-check-circle me-2"></i>${produtos.length} produtos carregados`);
+        
+        console.log('Produtos carregados com sucesso:', produtos.length);
+        
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar produtos:', status, error);
+        $('#status-produtos').html('<i class="fas fa-exclamation-triangle me-2"></i>Erro ao carregar produtos');
+    });
+}
+
+function carregarVendas() {
+    $.get('/api/vendas', function(data) {
+        vendas = data;
+        renderizarVendas();
+    });
+}
+
+function recarregarProdutos() {
+    console.log('Recarregando produtos...');
+    carregarProdutos();
+}
+
+function calcularTotal() {
+    const produtoId = $('#produto-select').val();
+    const quantidade = parseInt($('#quantidade').val()) || 0;
+    
+    if (produtoId && quantidade > 0) {
+        const produto = produtos.find(p => p.id == produtoId);
+        if (produto) {
+            const total = produto.valor_custo * quantidade;
+            $('#total').text('R$ ' + total.toFixed(2).replace('.', ','));
+        }
+    } else {
+        $('#total').text('R$ 0,00');
+    }
+}
+
+function finalizarVenda() {
+    const produtoId = $('#produto-select').val();
+    const quantidade = parseInt($('#quantidade').val());
+    const tipoPagamento = $('#tipo-pagamento').val();
+    
+    if (!produtoId || !quantidade || !tipoPagamento) {
+        alert('Preencha todos os campos!');
+        return;
+    }
+    
+    const produto = produtos.find(p => p.id == produtoId);
+    const total = produto.valor_custo * quantidade;
+    
+    const dados = {
+        cliente: 'Teste',
+        tipo_pagamento: tipoPagamento,
+        parcelas: 1,
+        valor_total: total,
+        itens: [{
+            produto_id: parseInt(produtoId),
+            quantidade: quantidade
+        }]
+    };
+    
+    console.log('Dados da venda:', dados);
+    
+    $.ajax({
+        url: '/api/vendas',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            console.log('Venda registrada:', response);
+            alert('Venda registrada com sucesso!');
+            $('#produto-select').val('');
+            $('#quantidade').val(1);
+            $('#tipo-pagamento').val('');
+            $('#total').text('R$ 0,00');
+            carregarVendas(); // Recarregar histórico após nova venda
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro na venda:', xhr.responseText);
+            alert('Erro ao registrar venda: ' + error);
+        }
+    });
+}
+
+function renderizarVendas() {
+    const tbody = $('#tabela-vendas tbody');
+    
+    if (vendas.length === 0) {
+        tbody.html('<tr><td colspan="5" class="text-center text-muted">Nenhuma venda registrada</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    vendas.forEach(function(venda) {
+        const produtos = venda.produtos.map(p => `${p.nome} (${p.quantidade})`).join(', ');
+        const tipoPagamento = venda.tipo_pagamento === 'Parcelamento' && venda.parcelas > 1 
+            ? `${venda.tipo_pagamento} (${venda.parcelas}x)` 
+            : venda.tipo_pagamento;
+        
+        html += `
+            <tr>
+                <td><small>${venda.data_venda}</small></td>
+                <td>${venda.cliente || '-'}</td>
+                <td><small>${produtos}</small></td>
+                <td><strong class="text-success">R$ ${venda.valor_total.toFixed(2).replace('.', ',')}</strong></td>
+                <td><span class="badge bg-info">${tipoPagamento}</span></td>
+            </tr>
+        `;
+    });
+    tbody.html(html);
+}
+</script>
+{% endblock %}

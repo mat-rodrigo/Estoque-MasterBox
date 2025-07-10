@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-center">
+            <i class="fas fa-chart-bar text-info me-3"></i>
+            Relatórios
+        </h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-file-excel me-2"></i>
+                    Relatório Diário de Vendas
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Gere um relatório Excel com todas as vendas de uma data específica.
+                </p>
+                <form id="form-relatorio">
+                    <div class="mb-3">
+                        <label for="data-relatorio" class="form-label">Data do Relatório</label>
+                        <input type="date" class="form-control" id="data-relatorio" required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-info btn-lg">
+                            <i class="fas fa-download me-2"></i>
+                            Gerar Relatório Excel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Estatísticas Gerais
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <div class="text-center">
+                            <h4 id="total-produtos" class="text-primary">0</h4>
+                            <small class="text-muted">Produtos em Estoque</small>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="text-center">
+                            <h4 id="total-vendas" class="text-success">0</h4>
+                            <small class="text-muted">Total de Vendas</small>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="text-center">
+                            <h4 id="faturamento-total" class="text-warning">R$ 0,00</h4>
+                            <small class="text-muted">Faturamento Total</small>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="text-center">
+                            <h4 id="produtos-baixo-estoque" class="text-danger">0</h4>
+                            <small class="text-muted">Baixo Estoque</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-warning text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    Últimas Vendas (Últimos 7 dias)
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tabela-ultimas-vendas">
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Cliente</th>
+                                <th>Produtos</th>
+                                <th>Valor</th>
+                                <th>Pagamento</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>
+                                    Carregando vendas...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // Definir data atual como padrão
+    const hoje = new Date().toISOString().split('T')[0];
+    $('#data-relatorio').val(hoje);
+    
+    carregarEstatisticas();
+    carregarUltimasVendas();
+    
+    $('#form-relatorio').on('submit', function(e) {
+        e.preventDefault();
+        gerarRelatorio();
+    });
+});
+
+function carregarEstatisticas() {
+    $.get('/api/produtos', function(produtos) {
+        $('#total-produtos').text(produtos.length);
+        
+        let baixoEstoque = 0;
+        produtos.forEach(function(produto) {
+            if (produto.quantidade <= 5) {
+                baixoEstoque++;
+            }
+        });
+        $('#produtos-baixo-estoque').text(baixoEstoque);
+    });
+    
+    $.get('/api/vendas', function(vendas) {
+        $('#total-vendas').text(vendas.length);
+        
+        const faturamento = vendas.reduce((total, venda) => total + venda.valor_total, 0);
+        $('#faturamento-total').text('R$ ' + faturamento.toFixed(2).replace('.', ','));
+    });
+}
+
+function carregarUltimasVendas() {
+    $.get('/api/vendas', function(vendas) {
+        // Filtrar vendas dos últimos 7 dias
+        const hoje = new Date();
+        const seteDiasAtras = new Date(hoje.getTime() - (7 * 24 * 60 * 60 * 1000));
+        
+        const vendasRecentes = vendas.filter(venda => {
+            const dataVenda = new Date(venda.data_venda.split(' ')[0].split('/').reverse().join('-'));
+            return dataVenda >= seteDiasAtras;
+        });
+        
+        renderizarUltimasVendas(vendasRecentes);
+    });
+}
+
+function renderizarUltimasVendas(vendas) {
+    const tbody = $('#tabela-ultimas-vendas tbody');
+    
+    if (vendas.length === 0) {
+        tbody.html('<tr><td colspan="5" class="text-center text-muted">Nenhuma venda nos últimos 7 dias</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    vendas.forEach(function(venda) {
+        const produtos = venda.produtos.map(p => `${p.nome} (${p.quantidade})`).join(', ');
+        const tipoPagamento = venda.tipo_pagamento === 'Parcelamento' && venda.parcelas > 1 
+            ? `${venda.tipo_pagamento} (${venda.parcelas}x)` 
+            : venda.tipo_pagamento;
+        
+        html += `
+            <tr>
+                <td><small>${venda.data_venda}</small></td>
+                <td>${venda.cliente || '-'}</td>
+                <td><small>${produtos}</small></td>
+                <td><strong class="text-success">R$ ${venda.valor_total.toFixed(2).replace('.', ',')}</strong></td>
+                <td><span class="badge bg-info">${tipoPagamento}</span></td>
+            </tr>
+        `;
+    });
+    tbody.html(html);
+}
+
+function gerarRelatorio() {
+    const data = $('#data-relatorio').val();
+    
+    if (!data) {
+        mostrarAlerta('Selecione uma data para gerar o relatório!', 'warning');
+        return;
+    }
+    
+    // Mostrar loading
+    const btn = $('#form-relatorio button[type="submit"]');
+    const textoOriginal = btn.html();
+    btn.html('<i class="fas fa-spinner fa-spin me-2"></i>Gerando...');
+    btn.prop('disabled', true);
+    
+    // Fazer download do arquivo
+    const link = document.createElement('a');
+    link.href = `/api/relatorio/${data}`;
+    link.download = `relatorio_vendas_${data.replace(/-/g, '_')}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Restaurar botão
+    setTimeout(function() {
+        btn.html(textoOriginal);
+        btn.prop('disabled', false);
+        mostrarAlerta('Relatório gerado com sucesso!', 'success');
+    }, 1000);
+}
+
+function mostrarAlerta(mensagem, tipo) {
+    const alerta = `
+        <div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
+            ${mensagem}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('.container').prepend(alerta);
+    
+    setTimeout(function() {
+        $('.alert').fadeOut();
+    }, 3000);
+}
+</script>
+{% endblock %} 

@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Estoque - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-center">
+            <i class="fas fa-boxes text-primary me-3"></i>
+            Gerenciamento de Estoque
+        </h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-plus-circle me-2"></i>
+                    Adicionar Produto
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="form-produto">
+                    <div class="mb-3">
+                        <label for="nome" class="form-label">Nome do Produto</label>
+                        <input type="text" class="form-control" id="nome" name="nome" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantidade" class="form-label">Quantidade</label>
+                        <input type="number" class="form-control" id="quantidade" name="quantidade" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="valor_custo" class="form-label">Valor de Custo (R$)</label>
+                        <input type="number" class="form-control" id="valor_custo" name="valor_custo" min="0" step="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="compatibilidade" class="form-label">Compatibilidade</label>
+                        <textarea class="form-control" id="compatibilidade" name="compatibilidade" rows="3" placeholder="Ex: iPhone X, iPhone XS, Samsung Galaxy S10"></textarea>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>
+                            Salvar Produto
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    Produtos em Estoque
+                </h5>
+                <div class="input-group" style="max-width: 300px;">
+                    <input type="text" class="form-control" id="busca-produto" placeholder="Buscar produto...">
+                    <button class="btn btn-light" type="button" id="btn-buscar">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tabela-produtos">
+                        <thead>
+                            <tr>
+                                <th>Produto</th>
+                                <th>Quantidade</th>
+                                <th>Valor de Custo</th>
+                                <th>Compatibilidade</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>
+                                    Carregando produtos...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Edição -->
+<div class="modal fade" id="modal-editar" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-edit me-2"></i>
+                    Editar Produto
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="form-editar">
+                    <input type="hidden" id="edit-id">
+                    <div class="mb-3">
+                        <label for="edit-nome" class="form-label">Nome do Produto</label>
+                        <input type="text" class="form-control" id="edit-nome" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-quantidade" class="form-label">Quantidade</label>
+                        <input type="number" class="form-control" id="edit-quantidade" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-valor_custo" class="form-label">Valor de Custo (R$)</label>
+                        <input type="number" class="form-control" id="edit-valor_custo" min="0" step="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-compatibilidade" class="form-label">Compatibilidade</label>
+                        <textarea class="form-control" id="edit-compatibilidade" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-salvar-edicao">
+                    <i class="fas fa-save me-2"></i>
+                    Salvar Alterações
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let produtos = [];
+
+$(document).ready(function() {
+    carregarProdutos();
+    
+    $('#form-produto').on('submit', function(e) {
+        e.preventDefault();
+        adicionarProduto();
+    });
+    
+    $('#btn-buscar').on('click', function() {
+        filtrarProdutos();
+    });
+    
+    $('#busca-produto').on('keyup', function() {
+        filtrarProdutos();
+    });
+    
+    $('#btn-salvar-edicao').on('click', function() {
+        salvarEdicao();
+    });
+});
+
+function carregarProdutos() {
+    $.get('/api/produtos', function(data) {
+        produtos = data;
+        renderizarProdutos(produtos);
+    });
+}
+
+function renderizarProdutos(produtosParaRenderizar) {
+    const tbody = $('#tabela-produtos tbody');
+    
+    if (produtosParaRenderizar.length === 0) {
+        tbody.html('<tr><td colspan="5" class="text-center text-muted">Nenhum produto encontrado</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    produtosParaRenderizar.forEach(function(produto) {
+        const classeQuantidade = produto.quantidade <= 5 ? 'text-danger' : 'text-success';
+        html += `
+            <tr>
+                <td><strong>${produto.nome}</strong></td>
+                <td class="${classeQuantidade}"><strong>${produto.quantidade}</strong></td>
+                <td>R$ ${produto.valor_custo.toFixed(2).replace('.', ',')}</td>
+                <td><small class="text-muted">${produto.compatibilidade || 'N/A'}</small></td>
+                <td>
+                    <button class="btn btn-sm btn-warning me-1" onclick="editarProduto(${produto.id})">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deletarProduto(${produto.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    tbody.html(html);
+}
+
+function filtrarProdutos() {
+    const termo = $('#busca-produto').val().toLowerCase();
+    const produtosFiltrados = produtos.filter(produto => 
+        produto.nome.toLowerCase().includes(termo) ||
+        produto.compatibilidade.toLowerCase().includes(termo)
+    );
+    renderizarProdutos(produtosFiltrados);
+}
+
+function adicionarProduto() {
+    const dados = {
+        nome: $('#nome').val(),
+        quantidade: parseInt($('#quantidade').val()),
+        valor_custo: parseFloat($('#valor_custo').val()),
+        compatibilidade: $('#compatibilidade').val()
+    };
+    
+    $.ajax({
+        url: '/api/produtos',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                $('#form-produto')[0].reset();
+                carregarProdutos();
+                mostrarAlerta('Produto adicionado com sucesso!', 'success');
+            }
+        },
+        error: function() {
+            mostrarAlerta('Erro ao adicionar produto!', 'danger');
+        }
+    });
+}
+
+function editarProduto(id) {
+    const produto = produtos.find(p => p.id === id);
+    if (!produto) return;
+    
+    $('#edit-id').val(produto.id);
+    $('#edit-nome').val(produto.nome);
+    $('#edit-quantidade').val(produto.quantidade);
+    $('#edit-valor_custo').val(produto.valor_custo);
+    $('#edit-compatibilidade').val(produto.compatibilidade);
+    
+    $('#modal-editar').modal('show');
+}
+
+function salvarEdicao() {
+    const id = $('#edit-id').val();
+    const dados = {
+        nome: $('#edit-nome').val(),
+        quantidade: parseInt($('#edit-quantidade').val()),
+        valor_custo: parseFloat($('#edit-valor_custo').val()),
+        compatibilidade: $('#edit-compatibilidade').val()
+    };
+    
+    $.ajax({
+        url: `/api/produtos/${id}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                $('#modal-editar').modal('hide');
+                carregarProdutos();
+                mostrarAlerta('Produto atualizado com sucesso!', 'success');
+            }
+        },
+        error: function() {
+            mostrarAlerta('Erro ao atualizar produto!', 'danger');
+        }
+    });
+}
+
+function deletarProduto(id) {
+    if (!confirm('Tem certeza que deseja excluir este produto?')) return;
+    
+    $.ajax({
+        url: `/api/produtos/${id}`,
+        method: 'DELETE',
+        success: function(response) {
+            if (response.success) {
+                carregarProdutos();
+                mostrarAlerta('Produto excluído com sucesso!', 'success');
+            }
+        },
+        error: function() {
+            mostrarAlerta('Erro ao excluir produto!', 'danger');
+        }
+    });
+}
+
+function mostrarAlerta(mensagem, tipo) {
+    const alerta = `
+        <div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
+            ${mensagem}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('.container').prepend(alerta);
+    
+    setTimeout(function() {
+        $('.alert').fadeOut();
+    }, 3000);
+}
+</script>
+{% endblock %} 
