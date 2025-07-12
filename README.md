@@ -147,6 +147,8 @@ Estoque/
 - **Relatórios detalhados** - Acompanhar faturamento
 
 ## 🚀 Melhorias Recentes
+- **Sistema de saídas** - Registra saída de valores do caixa ou produtos danificados do estoque
+- **Cadastro de cliente** - Registra clientes/atacadistas
 
 ### ✅ Sistema Otimizado
 - **Limpeza de arquivos** - Removidos arquivos de teste e diagnóstico
@@ -159,12 +161,6 @@ Estoque/
 - **Feedback visual** - Alertas e indicadores de status
 - **Navegação intuitiva** - Interface clara e organizada
 - **Validação de dados** - Prevenção de erros
-
-## 📞 Suporte
-
-Para dúvidas ou suporte técnico, entre em contato através dos canais disponíveis.
-
----
 
 **Sistema otimizado e pronto para uso em produção!** 🎉
 
