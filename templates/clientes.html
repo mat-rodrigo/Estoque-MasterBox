@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+
+{% block title %}Clientes - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-center">
+            <i class="fas fa-users text-primary me-3"></i>
+            Gerenciamento de Clientes
+        </h2>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-8">
+        <div class="input-group">
+            <span class="input-group-text">
+                <i class="fas fa-search"></i>
+            </span>
+            <input type="text" class="form-control" id="campo-busca" placeholder="Digite para buscar por nome, CPF ou CNPJ...">
+            <button class="btn btn-outline-secondary" type="button" onclick="limparBusca()" title="Limpar busca">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+    <div class="col-md-4 text-end">
+        <button type="button" class="btn btn-primary" onclick="abrirModalCliente()">
+            <i class="fas fa-plus me-2"></i>
+            Novo Cliente
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    Lista de Clientes
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <span class="text-muted" id="contador-clientes">
+                        <i class="fas fa-spinner fa-spin me-2"></i>
+                        Carregando...
+                    </span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tabela-clientes">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Tipo</th>
+                                <th>CPF/CNPJ</th>
+                                <th>Telefone</th>
+                                <th>Email</th>
+                                <th>Data Cadastro</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="7" class="text-center text-muted">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>
+                                    Carregando clientes...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Cliente -->
+<div class="modal fade" id="modalCliente" tabindex="-1" aria-labelledby="modalClienteLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalClienteLabel">
+                    <i class="fas fa-user me-2"></i>
+                    <span id="modal-titulo">Novo Cliente</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="form-cliente">
+                    <input type="hidden" id="cliente-id">
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="nome" class="form-label">Nome *</label>
+                                <input type="text" class="form-control" id="nome" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="tipo" class="form-label">Tipo</label>
+                                <select class="form-select" id="tipo">
+                                    <option value="Cliente">Cliente</option>
+                                    <option value="Atacadista">Atacadista</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="cpf-cnpj" class="form-label">CPF/CNPJ</label>
+                                <input type="text" class="form-control" id="cpf-cnpj" placeholder="000.000.000-00 ou 00.000.000/0000-00">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="telefone" class="form-label">Telefone</label>
+                                <input type="text" class="form-control" id="telefone" placeholder="(00) 00000-0000">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" placeholder="cliente@exemplo.com">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="endereco" class="form-label">Endereço</label>
+                        <textarea class="form-control" id="endereco" rows="2" placeholder="Rua, número, bairro, cidade - UF"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observacoes" class="form-label">Observações</label>
+                        <textarea class="form-control" id="observacoes" rows="3" placeholder="Informações adicionais sobre o cliente"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" onclick="salvarCliente()">
+                    <i class="fas fa-save me-2"></i>
+                    Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Confirmação de Exclusão -->
+<div class="modal fade" id="modalConfirmacao" tabindex="-1" aria-labelledby="modalConfirmacaoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalConfirmacaoLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Confirmar Exclusão
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir o cliente <strong id="nome-cliente-excluir"></strong>?</p>
+                <p class="text-muted">Esta ação não pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-danger" onclick="confirmarExclusao()">
+                    <i class="fas fa-trash me-2"></i>
+                    Excluir
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let clientes = [];
+let clienteParaExcluir = null;
+
+$(document).ready(function() {
+    console.log('=== PÁGINA DE CLIENTES CARREGADA ===');
+    carregarClientes();
+    
+    // Busca automática conforme digita
+    let timeoutBusca;
+    $('#campo-busca').on('input', function() {
+        clearTimeout(timeoutBusca);
+        const busca = $(this).val().trim();
+        
+        // Aguardar 300ms após parar de digitar para executar a busca
+        timeoutBusca = setTimeout(function() {
+            carregarClientes(busca);
+        }, 300);
+    });
+    
+    // Buscar ao pressionar Enter (mantido para compatibilidade)
+    $('#campo-busca').on('keypress', function(e) {
+        if (e.which === 13) { // Enter
+            clearTimeout(timeoutBusca);
+            buscarClientes();
+        }
+    });
+});
+
+function carregarClientes(busca = '') {
+    console.log('Carregando clientes...');
+    const url = busca ? `/api/clientes?busca=${encodeURIComponent(busca)}` : '/api/clientes';
+    
+    // Mostrar indicador de carregamento
+    $('#contador-clientes').html('<i class="fas fa-spinner fa-spin me-2"></i>Buscando...');
+    
+    $.get(url, function(data) {
+        console.log('Clientes carregados:', data);
+        clientes = data;
+        renderizarClientes();
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar clientes:', error);
+        $('#contador-clientes').html('<i class="fas fa-exclamation-triangle me-2"></i>Erro ao carregar clientes');
+        alert('Erro ao carregar clientes: ' + error);
+    });
+}
+
+function buscarClientes() {
+    const busca = $('#campo-busca').val().trim();
+    carregarClientes(busca);
+}
+
+function limparBusca() {
+    $('#campo-busca').val('');
+    carregarClientes();
+    
+    // Focar no campo de busca após limpar
+    $('#campo-busca').focus();
+}
+
+function renderizarClientes() {
+    const tbody = $('#tabela-clientes tbody');
+    const contador = $('#contador-clientes');
+    
+    // Atualizar contador
+    if (clientes.length === 0) {
+        contador.html('<i class="fas fa-info-circle me-2"></i>Nenhum cliente encontrado');
+    } else {
+        contador.html(`<i class="fas fa-users me-2"></i>${clientes.length} cliente(s) encontrado(s)`);
+    }
+    
+    if (clientes.length === 0) {
+        tbody.html('<tr><td colspan="7" class="text-center text-muted">Nenhum cliente encontrado</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    const termoBusca = $('#campo-busca').val().trim().toLowerCase();
+    
+    clientes.forEach(function(cliente) {
+        const tipoBadge = cliente.tipo === 'Atacadista' ? 'badge bg-warning' : 'badge bg-info';
+        
+        // Destacar o termo buscado
+        let nomeDestacado = cliente.nome;
+        let cpfDestacado = cliente.cpf_cnpj || '-';
+        
+        if (termoBusca) {
+            const regex = new RegExp(`(${termoBusca})`, 'gi');
+            nomeDestacado = cliente.nome.replace(regex, '<mark>$1</mark>');
+            if (cliente.cpf_cnpj) {
+                cpfDestacado = cliente.cpf_cnpj.replace(regex, '<mark>$1</mark>');
+            }
+        }
+        
+        html += `
+            <tr>
+                <td><strong>${nomeDestacado}</strong></td>
+                <td><span class="${tipoBadge}">${cliente.tipo}</span></td>
+                <td>${cpfDestacado}</td>
+                <td>${cliente.telefone || '-'}</td>
+                <td>${cliente.email || '-'}</td>
+                <td><small>${cliente.data_cadastro}</small></td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editarCliente(${cliente.id})">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="excluirCliente(${cliente.id}, '${cliente.nome}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.html(html);
+}
+
+function abrirModalCliente(cliente = null) {
+    if (cliente) {
+        $('#modal-titulo').text('Editar Cliente');
+        $('#cliente-id').val(cliente.id);
+        $('#nome').val(cliente.nome);
+        $('#tipo').val(cliente.tipo);
+        $('#cpf-cnpj').val(cliente.cpf_cnpj);
+        $('#telefone').val(cliente.telefone);
+        $('#email').val(cliente.email);
+        $('#endereco').val(cliente.endereco);
+        $('#observacoes').val(cliente.observacoes);
+    } else {
+        $('#modal-titulo').text('Novo Cliente');
+        $('#form-cliente')[0].reset();
+        $('#cliente-id').val('');
+    }
+    
+    $('#modalCliente').modal('show');
+}
+
+function salvarCliente() {
+    const clienteId = $('#cliente-id').val();
+    const dados = {
+        nome: $('#nome').val(),
+        tipo: $('#tipo').val(),
+        cpf_cnpj: $('#cpf-cnpj').val(),
+        telefone: $('#telefone').val(),
+        email: $('#email').val(),
+        endereco: $('#endereco').val(),
+        observacoes: $('#observacoes').val()
+    };
+    
+    if (!dados.nome.trim()) {
+        alert('O nome é obrigatório!');
+        return;
+    }
+    
+    const url = clienteId ? `/api/clientes/${clienteId}` : '/api/clientes';
+    const method = clienteId ? 'PUT' : 'POST';
+    
+    $.ajax({
+        url: url,
+        method: method,
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            console.log('Cliente salvo:', response);
+            alert('Cliente salvo com sucesso!');
+            $('#modalCliente').modal('hide');
+            carregarClientes();
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro ao salvar cliente:', xhr.responseText);
+            const response = JSON.parse(xhr.responseText);
+            alert('Erro ao salvar cliente: ' + (response.error || error));
+        }
+    });
+}
+
+function editarCliente(id) {
+    const cliente = clientes.find(c => c.id === id);
+    if (cliente) {
+        abrirModalCliente(cliente);
+    }
+}
+
+function excluirCliente(id, nome) {
+    clienteParaExcluir = id;
+    $('#nome-cliente-excluir').text(nome);
+    $('#modalConfirmacao').modal('show');
+}
+
+function confirmarExclusao() {
+    if (!clienteParaExcluir) return;
+    
+    $.ajax({
+        url: `/api/clientes/${clienteParaExcluir}`,
+        method: 'DELETE',
+        success: function(response) {
+            console.log('Cliente excluído:', response);
+            alert('Cliente excluído com sucesso!');
+            $('#modalConfirmacao').modal('hide');
+            carregarClientes();
+            clienteParaExcluir = null;
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro ao excluir cliente:', error);
+            alert('Erro ao excluir cliente: ' + error);
+        }
+    });
+}
+</script>
+
+<style>
+.badge {
+    font-size: 0.8em;
+}
+
+mark {
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+body.dark-mode mark {
+    background-color: #856404;
+    color: #fff3cd;
+}
+
+.input-group-text {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+}
+
+body.dark-mode .input-group-text {
+    background-color: #404040;
+    border-color: #505050;
+    color: #ffffff;
+}
+
+#campo-busca:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+</style>
+{% endblock %} 

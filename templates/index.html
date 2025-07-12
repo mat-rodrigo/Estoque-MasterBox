@@ -73,6 +73,10 @@
                         <i class="fas fa-shopping-cart me-2"></i>
                         Nova Venda
                     </a>
+                    <a href="/saidas" class="btn btn-danger btn-lg">
+                        <i class="fas fa-sign-out-alt me-2"></i>
+                        Registro de Saídas
+                    </a>
                     <a href="/relatorios" class="btn btn-info btn-lg">
                         <i class="fas fa-chart-bar me-2"></i>
                         Gerar Relatórios
@@ -99,23 +103,6 @@
     </div>
 </div>
 
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-warning text-white">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    Produtos com Baixo Estoque
-                </h5>
-            </div>
-            <div class="card-body">
-                <div id="produtos-baixo-estoque-lista">
-                    <p class="text-muted text-center">Carregando...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -124,13 +111,11 @@ $(document).ready(function() {
     // Carregar estatísticas
     carregarEstatisticas();
     carregarUltimasVendas();
-    carregarProdutosBaixoEstoque();
     
     // Atualizar a cada 30 segundos
     setInterval(function() {
         carregarEstatisticas();
         carregarUltimasVendas();
-        carregarProdutosBaixoEstoque();
     }, 30000);
 });
 
@@ -186,34 +171,6 @@ function carregarUltimasVendas() {
         });
         html += '</div>';
         $('#ultimas-vendas').html(html);
-    });
-}
-
-function carregarProdutosBaixoEstoque() {
-    $.get('/api/produtos', function(produtos) {
-        const baixoEstoque = produtos.filter(p => p.quantidade <= 5);
-        
-        if (baixoEstoque.length === 0) {
-            $('#produtos-baixo-estoque-lista').html('<p class="text-muted text-center">Nenhum produto com baixo estoque</p>');
-            return;
-        }
-        
-        let html = '<div class="table-responsive"><table class="table table-hover">';
-        html += '<thead><tr><th>Produto</th><th>Quantidade</th><th>Compatibilidade</th></tr></thead><tbody>';
-        
-        baixoEstoque.forEach(function(produto) {
-            const classeQuantidade = produto.quantidade === 0 ? 'text-danger' : 'text-warning';
-            html += `
-                <tr>
-                    <td>${produto.nome}</td>
-                    <td class="${classeQuantidade}"><strong>${produto.quantidade}</strong></td>
-                    <td><small class="text-muted">${produto.compatibilidade || 'N/A'}</small></td>
-                </tr>
-            `;
-        });
-        
-        html += '</tbody></table></div>';
-        $('#produtos-baixo-estoque-lista').html(html);
     });
 }
 </script>

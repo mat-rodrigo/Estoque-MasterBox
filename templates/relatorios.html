@@ -181,9 +181,20 @@ function renderizarUltimasVendas(vendas) {
     let html = '';
     vendas.forEach(function(venda) {
         const produtos = venda.produtos.map(p => `${p.nome} (${p.quantidade})`).join(', ');
-        const tipoPagamento = venda.tipo_pagamento === 'Parcelamento' && venda.parcelas > 1 
-            ? `${venda.tipo_pagamento} (${venda.parcelas}x)` 
-            : venda.tipo_pagamento;
+        
+        // Preparar string dos métodos de pagamento
+        let pagamentosStr = '';
+        if (venda.pagamentos && venda.pagamentos.length > 0) {
+            pagamentosStr = venda.pagamentos.map(p => {
+                if (p.tipo_pagamento === 'Cartão de Crédito' && p.parcelas > 1) {
+                    return `${p.tipo_pagamento} (${p.parcelas}x) - R$ ${p.valor.toFixed(2).replace('.', ',')}`;
+                } else {
+                    return `${p.tipo_pagamento} - R$ ${p.valor.toFixed(2).replace('.', ',')}`;
+                }
+            }).join(', ');
+        } else {
+            pagamentosStr = 'N/A';
+        }
         
         html += `
             <tr>
@@ -191,7 +202,7 @@ function renderizarUltimasVendas(vendas) {
                 <td>${venda.cliente || '-'}</td>
                 <td><small>${produtos}</small></td>
                 <td><strong class="text-success">R$ ${venda.valor_total.toFixed(2).replace('.', ',')}</strong></td>
-                <td><span class="badge bg-info">${tipoPagamento}</span></td>
+                <td><span class="badge bg-info">${pagamentosStr}</span></td>
             </tr>
         `;
     });

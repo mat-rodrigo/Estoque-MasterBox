@@ -31,7 +31,7 @@
         }
         
         .nav-link {
-            color: white !important;
+            color: rgb(255, 255, 255) !important;
             font-weight: 500;
             transition: all 0.3s ease;
         }
@@ -123,6 +123,124 @@
         .stats-card.info {
             background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
         }
+        
+        /* Modo Escuro */
+        body.dark-mode {
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        
+        body.dark-mode .card {
+            background-color: #2d2d2d;
+            color: #ffffff;
+            border: 1px solid #404040;
+        }
+        
+        body.dark-mode .card-header {
+            background-color: #404040 !important;
+            border-bottom: 1px solid #505050;
+        }
+        
+        body.dark-mode .table {
+            background-color: #2d2d2d;
+            color: #ffffff;
+        }
+        
+        body.dark-mode .table thead th {
+            background-color: #404040 !important;
+            color: #ffffff;
+        }
+        
+        body.dark-mode .table tbody tr {
+            background-color: #2d2d2d;
+            color: #ffffff;
+        }
+        
+        body.dark-mode .table tbody tr:hover {
+            background-color: #404040;
+        }
+        
+        body.dark-mode .form-control,
+        body.dark-mode .form-select {
+            background-color: #404040;
+            border-color: #505050;
+            color: #ffffff;
+        }
+        
+        body.dark-mode .form-control:focus,
+        body.dark-mode .form-select:focus {
+            background-color: #404040;
+            border-color: var(--secondary-color);
+            color: #ffffff;
+        }
+        
+        body.dark-mode .modal-content {
+            background-color: #2d2d2d;
+            color: #ffffff;
+        }
+        
+        body.dark-mode .modal-header {
+            background-color: #404040 !important;
+            border-bottom: 1px solid #505050;
+        }
+        
+        body.dark-mode .modal-footer {
+            border-top: 1px solid #505050;
+        }
+        
+        body.dark-mode .alert {
+            background-color: #404040;
+            border-color: #505050;
+            color: #ffffff;
+        }
+        
+        body.dark-mode .text-muted {
+            color: #b0b0b0 !important;
+        }
+        
+        body.dark-mode .text-dark {
+            color: #ffffff !important;
+        }
+        
+        /* Transição suave para modo escuro */
+        body, .card, .table, .form-control, .form-select, .modal-content {
+            transition: all 0.3s ease;
+        }
+        
+        /* Estilos do botão de modo escuro */
+        #btn-dark-mode {
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        #btn-dark-mode:hover {
+            transform: scale(1.1);
+            border-color: rgba(255, 255, 255, 0.6);
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        #dark-mode-icon {
+            transition: transform 0.3s ease;
+        }
+        
+        /* Responsividade para dispositivos móveis */
+        @media (max-width: 768px) {
+            #btn-dark-mode {
+                width: 35px;
+                height: 35px;
+                margin-left: 0.5rem !important;
+            }
+            
+            .navbar-nav .nav-item {
+                margin-bottom: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -130,7 +248,7 @@
         <div class="container">
             <a class="navbar-brand" href="/">
                 <i class="fas fa-mobile-alt me-2"></i>
-                Assistência de Celular
+                MasterBox
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -153,9 +271,24 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/clientes">
+                            <i class="fas fa-users me-1"></i> Clientes
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/saidas">
+                            <i class="fas fa-sign-out-alt me-1"></i> Saídas
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/relatorios">
                             <i class="fas fa-chart-bar me-1"></i> Relatórios
                         </a>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-outline-light ms-2" id="btn-dark-mode" title="Alternar Modo Escuro">
+                            <i class="fas fa-moon" id="dark-mode-icon"></i>
+                        </button>
                     </li>
                 </ul>
             </div>
@@ -170,6 +303,53 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <script>
+        // Controle do Modo Escuro
+        $(document).ready(function() {
+            // Verificar se o modo escuro está ativo no localStorage
+            const darkMode = localStorage.getItem('darkMode') === 'true';
+            if (darkMode) {
+                $('body').addClass('dark-mode');
+                $('#dark-mode-icon').removeClass('fa-moon').addClass('fa-sun');
+            }
+            
+            // Evento do botão de modo escuro
+            $('#btn-dark-mode').on('click', function() {
+                toggleDarkMode();
+            });
+        });
+        
+        function toggleDarkMode() {
+            const body = $('body');
+            const icon = $('#dark-mode-icon');
+            
+            if (body.hasClass('dark-mode')) {
+                // Desativar modo escuro
+                body.removeClass('dark-mode');
+                icon.removeClass('fa-sun').addClass('fa-moon');
+                localStorage.setItem('darkMode', 'false');
+                
+                // Animação do ícone
+                icon.css('transform', 'rotate(360deg)');
+                setTimeout(() => {
+                    icon.css('transform', 'rotate(0deg)');
+                }, 300);
+            } else {
+                // Ativar modo escuro
+                body.addClass('dark-mode');
+                icon.removeClass('fa-moon').addClass('fa-sun');
+                localStorage.setItem('darkMode', 'true');
+                
+                // Animação do ícone
+                icon.css('transform', 'rotate(360deg)');
+                setTimeout(() => {
+                    icon.css('transform', 'rotate(0deg)');
+                }, 300);
+            }
+        }
+    </script>
+    
     {% block scripts %}{% endblock %}
 </body>
 </html> 

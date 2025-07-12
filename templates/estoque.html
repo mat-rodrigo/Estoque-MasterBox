@@ -62,6 +62,9 @@
                     <button class="btn btn-light" type="button" id="btn-buscar">
                         <i class="fas fa-search"></i>
                     </button>
+                    <button class="btn btn-danger ms-2" type="button" id="btn-estoque-baixo" title="Mostrar apenas produtos com estoque baixo">
+                        <i class="fas fa-exclamation-triangle"></i> Estoque Baixo
+                    </button>
                 </div>
             </div>
             <div class="card-body">
@@ -155,10 +158,16 @@ $(document).ready(function() {
         filtrarProdutos();
     });
     
+    $('#btn-estoque-baixo').on('click', function() {
+        alternarFiltroEstoqueBaixo();
+    });
+    
     $('#btn-salvar-edicao').on('click', function() {
         salvarEdicao();
     });
 });
+
+let filtroEstoqueBaixoAtivo = false;
 
 function carregarProdutos() {
     $.get('/api/produtos', function(data) {
@@ -200,11 +209,28 @@ function renderizarProdutos(produtosParaRenderizar) {
 
 function filtrarProdutos() {
     const termo = $('#busca-produto').val().toLowerCase();
-    const produtosFiltrados = produtos.filter(produto => 
+    let produtosFiltrados = produtos.filter(produto => 
         produto.nome.toLowerCase().includes(termo) ||
         produto.compatibilidade.toLowerCase().includes(termo)
     );
+    if (filtroEstoqueBaixoAtivo) {
+        produtosFiltrados = produtosFiltrados.filter(produto => produto.quantidade <= 5);
+    }
     renderizarProdutos(produtosFiltrados);
+}
+
+function alternarFiltroEstoqueBaixo() {
+    filtroEstoqueBaixoAtivo = !filtroEstoqueBaixoAtivo;
+    if (filtroEstoqueBaixoAtivo) {
+        $('#btn-estoque-baixo').addClass('active');
+        $('#btn-estoque-baixo').removeClass('btn-danger').addClass('btn-outline-danger');
+        $('#btn-estoque-baixo').html('<i class="fas fa-exclamation-triangle"></i> Estoque Baixo <span class="badge bg-danger">ON</span>');
+    } else {
+        $('#btn-estoque-baixo').removeClass('active');
+        $('#btn-estoque-baixo').removeClass('btn-outline-danger').addClass('btn-danger');
+        $('#btn-estoque-baixo').html('<i class="fas fa-exclamation-triangle"></i> Estoque Baixo');
+    }
+    filtrarProdutos();
 }
 
 function adicionarProduto() {

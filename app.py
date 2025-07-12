@@ -25,10 +25,17 @@ class Venda(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     data_venda = db.Column(db.DateTime, default=datetime.utcnow)
     valor_total = db.Column(db.Float, default=0.0)
-    tipo_pagamento = db.Column(db.String(50))
     parcelas = db.Column(db.Integer, default=1)
     cliente = db.Column(db.String(200))
     produtos_vendidos = db.relationship('ItemVenda', backref='venda', lazy=True)
+    pagamentos = db.relationship('PagamentoVenda', backref='venda', lazy=True)
+
+class PagamentoVenda(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    venda_id = db.Column(db.Integer, db.ForeignKey('venda.id'), nullable=False)
+    tipo_pagamento = db.Column(db.String(50), nullable=False)
+    valor = db.Column(db.Float, nullable=False)
+    parcelas = db.Column(db.Integer, default=1)
 
 class ItemVenda(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -36,11 +43,65 @@ class ItemVenda(db.Model):
     produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'), nullable=False)
     quantidade = db.Column(db.Integer, default=1)
     valor_unitario = db.Column(db.Float, default=0.0)
+    nome_produto = db.Column(db.String(200))  # Nome do produto no momento da venda
     produto = db.relationship('Produto')
+
+# Novos modelos para saídas
+class Devolucao(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data_devolucao = db.Column(db.DateTime, default=datetime.utcnow)
+    valor = db.Column(db.Float, nullable=False)
+    produtos_devolvidos = db.Column(db.Text)  # Lista de produtos como JSON string
+    observacoes = db.Column(db.Text)
+    retornar_estoque = db.Column(db.Boolean, default=False)
+
+class PremiacaoFuncionario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data_premiacao = db.Column(db.DateTime, default=datetime.utcnow)
+    valor = db.Column(db.Float, nullable=False)
+    funcionario = db.Column(db.String(200), nullable=False)
+    descricao = db.Column(db.Text)
+
+class AvariaProduto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data_avaria = db.Column(db.DateTime, default=datetime.utcnow)
+    produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'), nullable=False)
+    quantidade = db.Column(db.Integer, nullable=False)
+    motivo = db.Column(db.String(200), nullable=False)
+    observacoes = db.Column(db.Text)
+    produto = db.relationship('Produto')
+
+class CompraSuprimento(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data_compra = db.Column(db.DateTime, default=datetime.utcnow)
+    valor = db.Column(db.Float, nullable=False)
+    descricao_compra = db.Column(db.Text, nullable=False)
+    fornecedor = db.Column(db.String(200))
+
+# Modelo para controle de caixa diário
+class CaixaDiario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data = db.Column(db.Date, default=date.today, unique=True)
+    valor_inicial = db.Column(db.Float, default=0.0)
+    valor_final = db.Column(db.Float, default=0.0)
+    observacoes = db.Column(db.Text)
+
+# Modelo para clientes/atacadistas
+class Cliente(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(200), nullable=False)
+    tipo = db.Column(db.String(50), default='Cliente')  # 'Cliente' ou 'Atacadista'
+    cpf_cnpj = db.Column(db.String(20), unique=True)
+    telefone = db.Column(db.String(20))
+    email = db.Column(db.String(100))
+    endereco = db.Column(db.Text)
+    data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
+    observacoes = db.Column(db.Text)
+    ativo = db.Column(db.Boolean, default=True)
 
 # Criar banco de dados
 with app.app_context():
-    db.create_all() 
+    db.create_all()
 
 # Rotas principais
 @app.route('/')
@@ -62,6 +123,11 @@ def vendas():
 def relatorios():
     return render_template('relatorios.html')
 
+@app.route('/saidas')
+def saidas():
+    produtos = Produto.query.all()
+    return render_template('saidas.html', produtos=produtos)
+
 @app.route('/teste')
 def teste():
     return render_template('teste_vendas.html')
@@ -69,6 +135,10 @@ def teste():
 @app.route('/vendas-simples')
 def vendas_simples():
     return render_template('vendas_simples.html')
+
+@app.route('/clientes')
+def clientes():
+    return render_template('clientes.html')
 
 # API para produtos
 @app.route('/api/produtos', methods=['GET'])
@@ -119,6 +189,93 @@ def deletar_produto(id):
     db.session.commit()
     return jsonify({'success': True})
 
+# API para clientes
+@app.route('/api/clientes', methods=['GET'])
+def get_clientes():
+    # Verificar se há parâmetro de busca
+    busca = request.args.get('busca', '').strip()
+    
+    if busca:
+        # Buscar por CPF/CNPJ ou nome
+        clientes = Cliente.query.filter(
+            Cliente.ativo == True,
+            db.or_(
+                Cliente.cpf_cnpj.contains(busca),
+                Cliente.nome.contains(busca)
+            )
+        ).order_by(Cliente.nome).all()
+    else:
+        # Buscar todos os clientes ativos
+        clientes = Cliente.query.filter_by(ativo=True).order_by(Cliente.nome).all()
+    
+    return jsonify([{
+        'id': c.id,
+        'nome': c.nome,
+        'tipo': c.tipo,
+        'cpf_cnpj': c.cpf_cnpj,
+        'telefone': c.telefone,
+        'email': c.email,
+        'endereco': c.endereco,
+        'data_cadastro': c.data_cadastro.strftime('%d/%m/%Y'),
+        'observacoes': c.observacoes
+    } for c in clientes])
+
+@app.route('/api/clientes', methods=['POST'])
+def adicionar_cliente():
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    # Verificar se CPF/CNPJ já existe
+    if data.get('cpf_cnpj'):
+        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj']).first()
+        if cliente_existente:
+            return jsonify({'success': False, 'error': 'CPF/CNPJ já cadastrado'}), 400
+    
+    cliente = Cliente(
+        nome=data['nome'],
+        tipo=data.get('tipo', 'Cliente'),
+        cpf_cnpj=data.get('cpf_cnpj', ''),
+        telefone=data.get('telefone', ''),
+        email=data.get('email', ''),
+        endereco=data.get('endereco', ''),
+        observacoes=data.get('observacoes', '')
+    )
+    db.session.add(cliente)
+    db.session.commit()
+    return jsonify({'success': True, 'id': cliente.id})
+
+@app.route('/api/clientes/<int:id>', methods=['PUT'])
+def atualizar_cliente(id):
+    cliente = Cliente.query.get_or_404(id)
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    # Verificar se CPF/CNPJ já existe em outro cliente
+    if data.get('cpf_cnpj') and data['cpf_cnpj'] != cliente.cpf_cnpj:
+        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj']).first()
+        if cliente_existente:
+            return jsonify({'success': False, 'error': 'CPF/CNPJ já cadastrado'}), 400
+    
+    cliente.nome = data['nome']
+    cliente.tipo = data.get('tipo', 'Cliente')
+    cliente.cpf_cnpj = data.get('cpf_cnpj', '')
+    cliente.telefone = data.get('telefone', '')
+    cliente.email = data.get('email', '')
+    cliente.endereco = data.get('endereco', '')
+    cliente.observacoes = data.get('observacoes', '')
+    
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/clientes/<int:id>', methods=['DELETE'])
+def deletar_cliente(id):
+    cliente = Cliente.query.get_or_404(id)
+    cliente.ativo = False  # Soft delete
+    db.session.commit()
+    return jsonify({'success': True})
+
 # API para vendas
 @app.route('/api/vendas', methods=['POST'])
 def registrar_venda():
@@ -126,15 +283,29 @@ def registrar_venda():
     if not data:
         return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
     
+    # Validar se a soma dos pagamentos é igual ao valor total
+    valor_total_pagamentos = sum(pagamento['valor'] for pagamento in data.get('pagamentos', []))
+    if abs(valor_total_pagamentos - data['valor_total']) > 0.01:  # Tolerância para diferenças de ponto flutuante
+        return jsonify({'success': False, 'error': 'A soma dos valores dos pagamentos deve ser igual ao valor total da venda'}), 400
+    
     # Criar venda
     venda = Venda(
         valor_total=data['valor_total'],
-        tipo_pagamento=data['tipo_pagamento'],
         parcelas=data.get('parcelas', 1),
         cliente=data.get('cliente', '')
     )
     db.session.add(venda)
     db.session.flush()  # Para obter o ID da venda
+    
+    # Adicionar pagamentos da venda
+    for pagamento_data in data.get('pagamentos', []):
+        pagamento = PagamentoVenda(
+            venda_id=venda.id,
+            tipo_pagamento=pagamento_data['tipo_pagamento'],
+            valor=pagamento_data['valor'],
+            parcelas=pagamento_data.get('parcelas', 1)
+        )
+        db.session.add(pagamento)
     
     # Adicionar itens da venda e atualizar estoque
     for item_data in data['itens']:
@@ -145,7 +316,8 @@ def registrar_venda():
                 venda_id=venda.id,
                 produto_id=produto.id,
                 quantidade=item_data['quantidade'],
-                valor_unitario=produto.valor_custo
+                valor_unitario=produto.valor_custo,
+                nome_produto=produto.nome  # Salvar o nome do produto no momento da venda
             )
             db.session.add(item_venda)
             
@@ -165,14 +337,18 @@ def get_vendas():
         'id': v.id,
         'data_venda': v.data_venda.strftime('%d/%m/%Y %H:%M'),
         'valor_total': v.valor_total,
-        'tipo_pagamento': v.tipo_pagamento,
         'parcelas': v.parcelas,
         'cliente': v.cliente,
         'produtos': [{
-            'nome': iv.produto.nome,
+            'nome': iv.nome_produto or (iv.produto.nome if iv.produto else 'Produto removido'),
             'quantidade': iv.quantidade,
             'valor_unitario': iv.valor_unitario
-        } for iv in v.produtos_vendidos]
+        } for iv in v.produtos_vendidos],
+        'pagamentos': [{
+            'tipo_pagamento': p.tipo_pagamento,
+            'valor': p.valor,
+            'parcelas': p.parcelas
+        } for p in v.pagamentos]
     } for v in vendas])
 
 # Relatório Excel
@@ -194,7 +370,7 @@ def gerar_relatorio(data):
         ws.title = f"Relatório {data_relatorio.strftime('%d/%m/%Y')}"
         
         # Cabeçalhos
-        headers = ['Horário', 'Valor', 'Produto(s)', 'Tipo de Pagamento', 'Cliente']
+        headers = ['Horário', 'Valor', 'Produto(s)', 'Métodos de Pagamento', 'Cliente']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.font = Font(bold=True)
@@ -208,15 +384,18 @@ def gerar_relatorio(data):
             for item in venda.produtos_vendidos:
                 produtos_str.append(f"{item.produto.nome} ({item.quantidade})")
             
-            # Tipo de pagamento com parcelas se aplicável
-            tipo_pagamento = venda.tipo_pagamento
-            if venda.tipo_pagamento == 'Parcelamento' and venda.parcelas > 1:
-                tipo_pagamento = f"Parcelamento ({venda.parcelas}x)"
+            # Preparar métodos de pagamento
+            pagamentos_str = []
+            for pagamento in venda.pagamentos:
+                if pagamento.tipo_pagamento == 'Cartão de Crédito' and pagamento.parcelas > 1:
+                    pagamentos_str.append(f"{pagamento.tipo_pagamento} ({pagamento.parcelas}x) - R$ {pagamento.valor:.2f}")
+                else:
+                    pagamentos_str.append(f"{pagamento.tipo_pagamento} - R$ {pagamento.valor:.2f}")
             
             ws.cell(row=row, column=1, value=venda.data_venda.strftime('%d/%m/%Y %H:%M'))
             ws.cell(row=row, column=2, value=f"R$ {venda.valor_total:.2f}")
             ws.cell(row=row, column=3, value=", ".join(produtos_str))
-            ws.cell(row=row, column=4, value=tipo_pagamento)
+            ws.cell(row=row, column=4, value=", ".join(pagamentos_str))
             ws.cell(row=row, column=5, value=venda.cliente or '')
             row += 1
         
@@ -245,6 +424,212 @@ def gerar_relatorio(data):
         download_name=f"relatorio_vendas_{data_relatorio.strftime('%d_%m_%Y')}.xlsx",
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+
+# APIs para Saídas
+
+@app.route('/api/devolucoes', methods=['POST'])
+def registrar_devolucao():
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    devolucao = Devolucao(
+        valor=data['valor'],
+        produtos_devolvidos=data.get('produtos_devolvidos', ''),
+        observacoes=data.get('observacoes', ''),
+        retornar_estoque=data.get('retornar_estoque', False)
+    )
+    
+    db.session.add(devolucao)
+    db.session.commit()
+    return jsonify({'success': True, 'id': devolucao.id})
+
+@app.route('/api/devolucoes')
+def get_devolucoes():
+    devolucoes = Devolucao.query.order_by(Devolucao.data_devolucao.desc()).all()
+    return jsonify([{
+        'id': d.id,
+        'data_devolucao': d.data_devolucao.strftime('%d/%m/%Y %H:%M'),
+        'valor': d.valor,
+        'produtos_devolvidos': d.produtos_devolvidos,
+        'observacoes': d.observacoes,
+        'retornar_estoque': d.retornar_estoque
+    } for d in devolucoes])
+
+@app.route('/api/premiacoes', methods=['POST'])
+def registrar_premiacao():
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    premiacao = PremiacaoFuncionario(
+        valor=data['valor'],
+        funcionario=data['funcionario'],
+        descricao=data.get('descricao', '')
+    )
+    
+    db.session.add(premiacao)
+    db.session.commit()
+    return jsonify({'success': True, 'id': premiacao.id})
+
+@app.route('/api/premiacoes')
+def get_premiacoes():
+    premiacoes = PremiacaoFuncionario.query.order_by(PremiacaoFuncionario.data_premiacao.desc()).all()
+    return jsonify([{
+        'id': p.id,
+        'data_premiacao': p.data_premiacao.strftime('%d/%m/%Y %H:%M'),
+        'valor': p.valor,
+        'funcionario': p.funcionario,
+        'descricao': p.descricao
+    } for p in premiacoes])
+
+@app.route('/api/avarias', methods=['POST'])
+def registrar_avaria():
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    produto = Produto.query.get(data['produto_id'])
+    if not produto:
+        return jsonify({'success': False, 'error': 'Produto não encontrado'}), 404
+    
+    if produto.quantidade < data['quantidade']:
+        return jsonify({'success': False, 'error': 'Quantidade insuficiente em estoque'}), 400
+    
+    avaria = AvariaProduto(
+        produto_id=data['produto_id'],
+        quantidade=data['quantidade'],
+        motivo=data['motivo'],
+        observacoes=data.get('observacoes', '')
+    )
+    
+    # Atualizar estoque
+    produto.quantidade -= data['quantidade']
+    
+    db.session.add(avaria)
+    db.session.commit()
+    return jsonify({'success': True, 'id': avaria.id})
+
+@app.route('/api/avarias')
+def get_avarias():
+    avarias = AvariaProduto.query.order_by(AvariaProduto.data_avaria.desc()).all()
+    return jsonify([{
+        'id': a.id,
+        'data_avaria': a.data_avaria.strftime('%d/%m/%Y %H:%M'),
+        'produto_nome': a.produto.nome,
+        'quantidade': a.quantidade,
+        'motivo': a.motivo,
+        'observacoes': a.observacoes
+    } for a in avarias])
+
+@app.route('/api/compras-suprimentos', methods=['POST'])
+def registrar_compra_suprimento():
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    compra = CompraSuprimento(
+        valor=data['valor'],
+        descricao_compra=data['descricao_compra'],
+        fornecedor=data.get('fornecedor', '')
+    )
+    
+    db.session.add(compra)
+    db.session.commit()
+    return jsonify({'success': True, 'id': compra.id})
+
+@app.route('/api/compras-suprimentos')
+def get_compras_suprimentos():
+    compras = CompraSuprimento.query.order_by(CompraSuprimento.data_compra.desc()).all()
+    return jsonify([{
+        'id': c.id,
+        'data_compra': c.data_compra.strftime('%d/%m/%Y %H:%M'),
+        'valor': c.valor,
+        'descricao_compra': c.descricao_compra,
+        'fornecedor': c.fornecedor
+    } for c in compras])
+
+# APIs para Controle de Caixa Diário
+
+def calcular_caixa_diario(data_caixa=None):
+    """Calcula o saldo do caixa para uma data específica"""
+    if data_caixa is None:
+        data_caixa = date.today()
+    
+    # Buscar ou criar registro do caixa diário
+    caixa = CaixaDiario.query.filter_by(data=data_caixa).first()
+    if not caixa:
+        caixa = CaixaDiario(data=data_caixa, valor_inicial=0.0, valor_final=0.0)
+        db.session.add(caixa)
+        db.session.commit()
+    
+    # Calcular entradas (vendas)
+    vendas_do_dia = Venda.query.filter(
+        db.func.date(Venda.data_venda) == data_caixa
+    ).all()
+    total_vendas = sum(venda.valor_total for venda in vendas_do_dia)
+    
+    # Calcular saídas (devoluções, premiações, compras)
+    devolucoes_do_dia = Devolucao.query.filter(
+        db.func.date(Devolucao.data_devolucao) == data_caixa
+    ).all()
+    total_devolucoes = sum(devolucao.valor for devolucao in devolucoes_do_dia)
+    
+    premiacoes_do_dia = PremiacaoFuncionario.query.filter(
+        db.func.date(PremiacaoFuncionario.data_premiacao) == data_caixa
+    ).all()
+    total_premiacoes = sum(premiacao.valor for premiacao in premiacoes_do_dia)
+    
+    compras_do_dia = CompraSuprimento.query.filter(
+        db.func.date(CompraSuprimento.data_compra) == data_caixa
+    ).all()
+    total_compras = sum(compra.valor for compra in compras_do_dia)
+    
+    # Calcular saldo final
+    saldo_final = caixa.valor_inicial + total_vendas - total_devolucoes - total_premiacoes - total_compras
+    caixa.valor_final = saldo_final
+    db.session.commit()
+    
+    return {
+        'valor_inicial': caixa.valor_inicial,
+        'total_vendas': total_vendas,
+        'total_devolucoes': total_devolucoes,
+        'total_premiacoes': total_premiacoes,
+        'total_compras': total_compras,
+        'saldo_final': saldo_final
+    }
+
+@app.route('/api/caixa-diario/<data>')
+def get_caixa_diario(data):
+    try:
+        data_caixa = datetime.strptime(data, '%Y-%m-%d').date()
+    except:
+        return jsonify({'error': 'Data inválida'})
+    
+    caixa_info = calcular_caixa_diario(data_caixa)
+    return jsonify(caixa_info)
+
+@app.route('/api/caixa-diario/hoje')
+def get_caixa_hoje():
+    caixa_info = calcular_caixa_diario()
+    return jsonify(caixa_info)
+
+@app.route('/api/caixa-diario/valor-inicial', methods=['POST'])
+def definir_valor_inicial():
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    data_caixa = date.today()
+    caixa = CaixaDiario.query.filter_by(data=data_caixa).first()
+    if not caixa:
+        caixa = CaixaDiario(data=data_caixa)
+        db.session.add(caixa)
+    
+    caixa.valor_inicial = data['valor_inicial']
+    db.session.commit()
+    
+    return jsonify({'success': True})
 
 if __name__ == '__main__':
     app.run(debug=True) 

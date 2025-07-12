@@ -25,6 +25,11 @@ Sistema completo e otimizado para gerenciamento de estoque e vendas de assistên
 - ✅ Visualização das últimas vendas
 - ✅ Exportação profissional
 
+## 4. Atualizações
+   - janela de pagamentos com a opção de multiplos modos
+   - filtros nas listagem de produtos por nome e quantidade(estoque e estoque baixo)
+   - janela inicial deve apresentar mais uma opção de uma div de atacado com permissão de venda apenas para produtos com mais de 10 unidades
+   - Janela de desperdicios para peças com defeito ou estornos 
 ## ⚡ Instalação e Configuração
 
 ### 1. Instalar Dependências

@@ -1,0 +1,844 @@
+{% extends "base.html" %}
+
+{% block title %}Registro de Saídas - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<style>
+.payment-option {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.payment-option:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.metodo-pagamento-item {
+    border: 1px solid #dee2e6;
+}
+
+/* Estilos personalizados para as abas de saídas */
+.nav-tabs .nav-link.active {
+    font-weight: bold;
+}
+
+.nav-tabs .nav-link.active[style*="color: #856404"] {
+    background-color: #fff3cd !important;
+    border-color: #ffeaa7 !important;
+    color: #856404 !important;
+}
+
+.nav-tabs .nav-link.active[style*="color: #155724"] {
+    background-color: #d4edda !important;
+    border-color: #c3e6cb !important;
+    color: #155724 !important;
+}
+
+.nav-tabs .nav-link.active[style*="color: #721c24"] {
+    background-color: #f8d7da !important;
+    border-color: #f5c6cb !important;
+    color: #721c24 !important;
+}
+
+.nav-tabs .nav-link.active[style*="color: #004085"] {
+    background-color: #d1ecf1 !important;
+    border-color: #bee5eb !important;
+    color: #004085 !important;
+}
+
+/* Hover effects para as abas */
+.nav-tabs .nav-link:hover {
+    opacity: 0.9;
+}
+</style>
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-center">
+            <i class="fas fa-sign-out-alt text-danger me-3"></i>
+            Registro de Saídas
+        </h2>
+        <p class="text-center text-muted">Controle financeiro e de estoque completo</p>
+    </div>
+</div>
+
+<!-- Card do Caixa Diário -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-cash-register me-2"></i>
+                    Caixa Diário - <span id="data-hoje"></span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Valor Inicial</h6>
+                            <h4 class="text-primary" id="valor-inicial">R$ 0,00</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Total Vendas</h6>
+                            <h4 class="text-success" id="total-vendas">R$ 0,00</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Total Saídas</h6>
+                            <h4 class="text-danger" id="total-saidas">R$ 0,00</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Saldo Final</h6>
+                            <h4 class="text-dark" id="saldo-final">R$ 0,00</h4>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modal-valor-inicial">
+                            <i class="fas fa-edit me-2"></i>Definir Valor Inicial
+                        </button>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="button" class="btn btn-outline-secondary" onclick="atualizarCaixa()">
+                            <i class="fas fa-sync-alt me-2"></i>Atualizar Caixa
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Card do Resumo do Estoque -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-boxes me-2"></i>
+                    Resumo do Estoque
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h6 class="text-muted">Total de Produtos</h6>
+                            <h4 class="text-info" id="total-produtos">0</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h6 class="text-muted">Produtos com Baixo Estoque</h6>
+                            <h4 class="text-warning" id="baixo-estoque">0</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h6 class="text-muted">Produtos Sem Estoque</h6>
+                            <h4 class="text-danger" id="sem-estoque">0</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Definir Valor Inicial -->
+<div class="modal fade" id="modal-valor-inicial" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-cash-register me-2"></i>
+                    Definir Valor Inicial do Caixa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Valor Inicial (R$)</label>
+                    <input type="number" class="form-control" id="valor-inicial-input" step="0.01" min="0" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="salvarValorInicial()">
+                    <i class="fas fa-save me-2"></i>Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="saidasTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="devolucoes-tab" data-bs-toggle="tab" data-bs-target="#devolucoes" type="button" role="tab" style="color: #856404; border-color: #e1b524;">
+                            <i class="fas fa-undo me-2"></i>Devoluções
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="premiacoes-tab" data-bs-toggle="tab" data-bs-target="#premiacoes" type="button" role="tab" style="color: #155724; border-color: #24f955;">
+                            <i class="fas fa-trophy me-2"></i>Premiações
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="avarias-tab" data-bs-toggle="tab" data-bs-target="#avarias" type="button" role="tab" style="color: #721c24; border-color: #f34556;">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Avaria de Produtos
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="compras-tab" data-bs-toggle="tab" data-bs-target="#compras" type="button" role="tab" style="color: #004085; border-color: #3eddf5;">
+                            <i class="fas fa-shopping-cart me-2"></i>pagamentos fornecedores
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="saidasTabsContent">
+                    <!-- Aba Devoluções -->
+                    <div class="tab-pane fade show active" id="devolucoes" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header bg-warning text-dark">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-undo me-2"></i>Nova Devolução
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="form-devolucao">
+                                            <div class="mb-3">
+                                                <label class="form-label">Valor da Devolução (R$)</label>
+                                                <input type="number" class="form-control" id="valor-devolucao" step="0.01" min="0" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Produtos Devolvidos (Opcional)</label>
+                                                <textarea class="form-control" id="produtos-devolvidos" rows="3" placeholder="Liste os produtos devolvidos..."></textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Observações</label>
+                                                <textarea class="form-control" id="observacoes-devolucao" rows="3" placeholder="Motivo da devolução, número da venda original..."></textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="retornar-estoque">
+                                                    <label class="form-check-label" for="retornar-estoque">
+                                                        Retornar produtos ao estoque
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <button type="submit" class="btn btn-warning">
+                                                <i class="fas fa-save me-2"></i>Registrar Devolução
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-history me-2"></i>Histórico de Devoluções
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover" id="tabela-devolucoes">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Data/Hora</th>
+                                                        <th>Valor</th>
+                                                        <th>Produtos</th>
+                                                        <th>Observações</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td colspan="4" class="text-center text-muted">
+                                                            <i class="fas fa-spinner fa-spin me-2"></i>Carregando...
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Aba Premiações -->
+                    <div class="tab-pane fade" id="premiacoes" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header bg-success text-white">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-trophy me-2"></i>Nova Premiação
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="form-premiacao">
+                                            <div class="mb-3">
+                                                <label class="form-label">Valor da Premiação (R$)</label>
+                                                <input type="number" class="form-control" id="valor-premiacao" step="0.01" min="0" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Funcionário</label>
+                                                <input type="text" class="form-control" id="funcionario-premiacao" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Descrição</label>
+                                                <textarea class="form-control" id="descricao-premiacao" rows="3" placeholder="Ex: Bônus por meta atingida, Premiação de desempenho..."></textarea>
+                                            </div>
+                                            <button type="submit" class="btn btn-success">
+                                                <i class="fas fa-save me-2"></i>Registrar Premiação
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-history me-2"></i>Histórico de Premiações
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover" id="tabela-premiacoes">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Data/Hora</th>
+                                                        <th>Funcionário</th>
+                                                        <th>Valor</th>
+                                                        <th>Descrição</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td colspan="4" class="text-center text-muted">
+                                                            <i class="fas fa-spinner fa-spin me-2"></i>Carregando...
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Aba Avaria de Produtos -->
+                    <div class="tab-pane fade" id="avarias" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header bg-danger text-white">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-exclamation-triangle me-2"></i>Nova Avaria
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="form-avaria">
+                                            <div class="mb-3">
+                                                <label class="form-label">Produto</label>
+                                                <select class="form-select" id="produto-avaria" required>
+                                                    <option value="">Selecione um produto</option>
+                                                    {% for produto in produtos %}
+                                                    <option value="{{ produto.id }}" data-estoque="{{ produto.quantidade }}">
+                                                        {{ produto.nome }} (Estoque: {{ produto.quantidade }})
+                                                    </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Quantidade Avaria</label>
+                                                <input type="number" class="form-control" id="quantidade-avaria" min="1" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Motivo</label>
+                                                <select class="form-select" id="motivo-avaria" required>
+                                                    <option value="">Selecione o motivo</option>
+                                                    <option value="Peça danificada">Peça danificada</option>
+                                                    <option value="Quebra acidental">Quebra acidental</option>
+                                                    <option value="Defeito de fábrica">Defeito de fábrica</option>
+                                                    <option value="Vencimento">Vencimento</option>
+                                                    <option value="Outro">Outro</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Observações</label>
+                                                <textarea class="form-control" id="observacoes-avaria" rows="3" placeholder="Detalhes adicionais..."></textarea>
+                                            </div>
+                                            <button type="submit" class="btn btn-danger">
+                                                <i class="fas fa-save me-2"></i>Registrar Avaria
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-history me-2"></i>Histórico de Avarias
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover" id="tabela-avarias">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Data/Hora</th>
+                                                        <th>Produto</th>
+                                                        <th>Quantidade</th>
+                                                        <th>Motivo</th>
+                                                        <th>Observações</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td colspan="5" class="text-center text-muted">
+                                                            <i class="fas fa-spinner fa-spin me-2"></i>Carregando...
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Aba Compras de Suprimentos -->
+                    <div class="tab-pane fade" id="compras" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-shopping-cart me-2"></i>Nova Compra
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="form-compra">
+                                            <div class="mb-3">
+                                                <label class="form-label">Valor da Compra (R$)</label>
+                                                <input type="number" class="form-control" id="valor-compra" step="0.01" min="0" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Descrição da Compra</label>
+                                                <textarea class="form-control" id="descricao-compra" rows="3" placeholder="Ex: Compra de baterias e telas, Material de limpeza, Ferramentas..." required></textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Fornecedor (Opcional)</label>
+                                                <input type="text" class="form-control" id="fornecedor-compra" placeholder="Nome do fornecedor">
+                                            </div>
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save me-2"></i>Registrar Compra
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h6 class="card-title mb-0">
+                                            <i class="fas fa-history me-2"></i>Histórico de Compras
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover" id="tabela-compras">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Data/Hora</th>
+                                                        <th>Valor</th>
+                                                        <th>Descrição</th>
+                                                        <th>Fornecedor</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td colspan="4" class="text-center text-muted">
+                                                            <i class="fas fa-spinner fa-spin me-2"></i>Carregando...
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // Carregar dados iniciais
+    carregarCaixa();
+    carregarResumoEstoque();
+    carregarDevolucoes();
+    carregarPremiacoes();
+    carregarAvarias();
+    carregarCompras();
+    
+    // Eventos dos formulários
+    $('#form-devolucao').on('submit', function(e) {
+        e.preventDefault();
+        registrarDevolucao();
+    });
+    
+    $('#form-premiacao').on('submit', function(e) {
+        e.preventDefault();
+        registrarPremiacao();
+    });
+    
+    $('#form-avaria').on('submit', function(e) {
+        e.preventDefault();
+        registrarAvaria();
+    });
+    
+    $('#form-compra').on('submit', function(e) {
+        e.preventDefault();
+        registrarCompra();
+    });
+    
+    // Evento para limitar quantidade de avaria
+    $('#produto-avaria').on('change', function() {
+        const option = $(this).find('option:selected');
+        const estoque = parseInt(option.data('estoque')) || 0;
+        $('#quantidade-avaria').attr('max', estoque);
+    });
+    
+    // Mostrar data atual
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    $('#data-hoje').text(hoje);
+});
+
+// Funções para Controle de Caixa
+function carregarCaixa() {
+    $.get('/api/caixa-diario/hoje', function(data) {
+        $('#valor-inicial').text('R$ ' + data.valor_inicial.toFixed(2).replace('.', ','));
+        $('#total-vendas').text('R$ ' + data.total_vendas.toFixed(2).replace('.', ','));
+        
+        const totalSaidas = data.total_devolucoes + data.total_premiacoes + data.total_compras;
+        $('#total-saidas').text('R$ ' + totalSaidas.toFixed(2).replace('.', ','));
+        $('#saldo-final').text('R$ ' + data.saldo_final.toFixed(2).replace('.', ','));
+        
+        // Definir cor do saldo final
+        if (data.saldo_final >= 0) {
+            $('#saldo-final').removeClass('text-danger').addClass('text-dark');
+        } else {
+            $('#saldo-final').removeClass('text-dark').addClass('text-danger');
+        }
+    });
+}
+
+function carregarResumoEstoque() {
+    $.get('/api/produtos', function(produtos) {
+        const totalProdutos = produtos.length;
+        const baixoEstoque = produtos.filter(p => p.quantidade <= 5 && p.quantidade > 0).length;
+        const semEstoque = produtos.filter(p => p.quantidade === 0).length;
+        
+        $('#total-produtos').text(totalProdutos);
+        $('#baixo-estoque').text(baixoEstoque);
+        $('#sem-estoque').text(semEstoque);
+    });
+}
+
+function atualizarCaixa() {
+    carregarCaixa();
+    mostrarAlerta('Caixa atualizado!', 'success');
+}
+
+function salvarValorInicial() {
+    const valor = parseFloat($('#valor-inicial-input').val());
+    if (!valor || valor < 0) {
+        mostrarAlerta('Digite um valor válido!', 'danger');
+        return;
+    }
+    
+    $.ajax({
+        url: '/api/caixa-diario/valor-inicial',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({valor_inicial: valor}),
+        success: function(response) {
+            if (response.success) {
+                $('#modal-valor-inicial').modal('hide');
+                carregarCaixa();
+                mostrarAlerta('Valor inicial definido com sucesso!', 'success');
+            }
+        },
+        error: function() {
+            mostrarAlerta('Erro ao definir valor inicial!', 'danger');
+        }
+    });
+}
+
+// Funções para Devoluções
+function carregarDevolucoes() {
+    $.get('/api/devolucoes', function(data) {
+        renderizarDevolucoes(data);
+    });
+}
+
+function renderizarDevolucoes(devolucoes) {
+    const tbody = $('#tabela-devolucoes tbody');
+    
+    if (devolucoes.length === 0) {
+        tbody.html('<tr><td colspan="4" class="text-center text-muted">Nenhuma devolução registrada</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    devolucoes.forEach(function(devolucao) {
+        html += `
+            <tr>
+                <td><small>${devolucao.data_devolucao}</small></td>
+                <td><strong class="text-danger">R$ ${devolucao.valor.toFixed(2).replace('.', ',')}</strong></td>
+                <td><small>${devolucao.produtos_devolvidos || '-'}</small></td>
+                <td><small>${devolucao.observacoes || '-'}</small></td>
+            </tr>
+        `;
+    });
+    tbody.html(html);
+}
+
+function registrarDevolucao() {
+    const dados = {
+        valor: parseFloat($('#valor-devolucao').val()),
+        produtos_devolvidos: $('#produtos-devolvidos').val(),
+        observacoes: $('#observacoes-devolucao').val(),
+        retornar_estoque: $('#retornar-estoque').is(':checked')
+    };
+    
+    $.ajax({
+        url: '/api/devolucoes',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                $('#form-devolucao')[0].reset();
+                carregarDevolucoes();
+                carregarCaixa(); // Atualizar caixa após devolução
+                mostrarAlerta('Devolução registrada com sucesso!', 'success');
+            }
+        },
+        error: function() {
+            mostrarAlerta('Erro ao registrar devolução!', 'danger');
+        }
+    });
+}
+
+// Funções para Premiações
+function carregarPremiacoes() {
+    $.get('/api/premiacoes', function(data) {
+        renderizarPremiacoes(data);
+    });
+}
+
+function renderizarPremiacoes(premiacoes) {
+    const tbody = $('#tabela-premiacoes tbody');
+    
+    if (premiacoes.length === 0) {
+        tbody.html('<tr><td colspan="4" class="text-center text-muted">Nenhuma premiação registrada</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    premiacoes.forEach(function(premiacao) {
+        html += `
+            <tr>
+                <td><small>${premiacao.data_premiacao}</small></td>
+                <td><strong>${premiacao.funcionario}</strong></td>
+                <td><strong class="text-danger">R$ ${premiacao.valor.toFixed(2).replace('.', ',')}</strong></td>
+                <td><small>${premiacao.descricao || '-'}</small></td>
+            </tr>
+        `;
+    });
+    tbody.html(html);
+}
+
+function registrarPremiacao() {
+    const dados = {
+        valor: parseFloat($('#valor-premiacao').val()),
+        funcionario: $('#funcionario-premiacao').val(),
+        descricao: $('#descricao-premiacao').val()
+    };
+    
+    $.ajax({
+        url: '/api/premiacoes',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                $('#form-premiacao')[0].reset();
+                carregarPremiacoes();
+                carregarCaixa(); // Atualizar caixa após premiação
+                mostrarAlerta('Premiação registrada com sucesso!', 'success');
+            }
+        },
+        error: function() {
+            mostrarAlerta('Erro ao registrar premiação!', 'danger');
+        }
+    });
+}
+
+// Funções para Avarias
+function carregarAvarias() {
+    $.get('/api/avarias', function(data) {
+        renderizarAvarias(data);
+    });
+}
+
+function renderizarAvarias(avarias) {
+    const tbody = $('#tabela-avarias tbody');
+    
+    if (avarias.length === 0) {
+        tbody.html('<tr><td colspan="5" class="text-center text-muted">Nenhuma avaria registrada</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    avarias.forEach(function(avaria) {
+        html += `
+            <tr>
+                <td><small>${avaria.data_avaria}</small></td>
+                <td><strong>${avaria.produto_nome}</strong></td>
+                <td><strong class="text-danger">${avaria.quantidade}</strong></td>
+                <td><span class="badge bg-warning">${avaria.motivo}</span></td>
+                <td><small>${avaria.observacoes || '-'}</small></td>
+            </tr>
+        `;
+    });
+    tbody.html(html);
+}
+
+function registrarAvaria() {
+    const dados = {
+        produto_id: parseInt($('#produto-avaria').val()),
+        quantidade: parseInt($('#quantidade-avaria').val()),
+        motivo: $('#motivo-avaria').val(),
+        observacoes: $('#observacoes-avaria').val()
+    };
+    
+    $.ajax({
+        url: '/api/avarias',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                $('#form-avaria')[0].reset();
+                carregarAvarias();
+                carregarResumoEstoque(); // Atualizar resumo do estoque após avaria
+                mostrarAlerta('Avaria registrada com sucesso!', 'success');
+            }
+        },
+        error: function(xhr) {
+            const error = xhr.responseJSON?.error || 'Erro ao registrar avaria!';
+            mostrarAlerta(error, 'danger');
+        }
+    });
+}
+
+// Funções para Compras
+function carregarCompras() {
+    $.get('/api/compras-suprimentos', function(data) {
+        renderizarCompras(data);
+    });
+}
+
+function renderizarCompras(compras) {
+    const tbody = $('#tabela-compras tbody');
+    
+    if (compras.length === 0) {
+        tbody.html('<tr><td colspan="4" class="text-center text-muted">Nenhuma compra registrada</td></tr>');
+        return;
+    }
+    
+    let html = '';
+    compras.forEach(function(compra) {
+        html += `
+            <tr>
+                <td><small>${compra.data_compra}</small></td>
+                <td><strong class="text-danger">R$ ${compra.valor.toFixed(2).replace('.', ',')}</strong></td>
+                <td><small>${compra.descricao_compra}</small></td>
+                <td><small>${compra.fornecedor || '-'}</small></td>
+            </tr>
+        `;
+    });
+    tbody.html(html);
+}
+
+function registrarCompra() {
+    const dados = {
+        valor: parseFloat($('#valor-compra').val()),
+        descricao_compra: $('#descricao-compra').val(),
+        fornecedor: $('#fornecedor-compra').val()
+    };
+    
+    $.ajax({
+        url: '/api/compras-suprimentos',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                $('#form-compra')[0].reset();
+                carregarCompras();
+                carregarCaixa(); // Atualizar caixa após compra
+                mostrarAlerta('Compra registrada com sucesso!', 'success');
+            }
+        },
+        error: function() {
+            mostrarAlerta('Erro ao registrar compra!', 'danger');
+        }
+    });
+}
+
+function mostrarAlerta(mensagem, tipo) {
+    const alerta = `
+        <div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
+            ${mensagem}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('.container').prepend(alerta);
+    
+    setTimeout(function() {
+        $('.alert').fadeOut();
+    }, 3000);
+}
+</script>
+{% endblock %} 
