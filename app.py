@@ -99,6 +99,28 @@ class Cliente(db.Model):
     observacoes = db.Column(db.Text)
     ativo = db.Column(db.Boolean, default=True)
 
+# Modelo para crediário de atacadistas
+class Crediario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('cliente.id'), nullable=False)
+    venda_id = db.Column(db.Integer, db.ForeignKey('venda.id'), nullable=False)
+    valor_total = db.Column(db.Float, nullable=False)
+    valor_pago = db.Column(db.Float, default=0.0)
+    data_vencimento = db.Column(db.Date, nullable=False)
+    status = db.Column(db.String(20), default='Pendente')  # 'Pendente', 'Pago', 'Atrasado'
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    observacoes = db.Column(db.Text)
+    cliente = db.relationship('Cliente')
+    venda = db.relationship('Venda')
+    pagamentos = db.relationship('PagamentoCrediario', backref='crediario', lazy=True)
+
+class PagamentoCrediario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    crediario_id = db.Column(db.Integer, db.ForeignKey('crediario.id'), nullable=False)
+    valor_pago = db.Column(db.Float, nullable=False)
+    data_pagamento = db.Column(db.DateTime, default=datetime.utcnow)
+    observacoes = db.Column(db.Text)
+
 # Criar banco de dados
 with app.app_context():
     db.create_all()
@@ -139,6 +161,14 @@ def vendas_simples():
 @app.route('/clientes')
 def clientes():
     return render_template('clientes.html')
+
+@app.route('/vendas-atacadistas')
+def vendas_atacadistas():
+    return render_template('vendas_atacadistas.html')
+
+@app.route('/pagamentos-crediarios')
+def pagamentos_crediarios():
+    return render_template('pagamentos_crediarios.html')
 
 # API para produtos
 @app.route('/api/produtos', methods=['GET'])
@@ -275,6 +305,139 @@ def deletar_cliente(id):
     cliente.ativo = False  # Soft delete
     db.session.commit()
     return jsonify({'success': True})
+
+# API para crediários
+@app.route('/api/crediarios', methods=['GET'])
+def get_crediarios():
+    crediarios = Crediario.query.order_by(Crediario.data_vencimento.asc()).all()
+    return jsonify([{
+        'id': c.id,
+        'cliente_nome': c.cliente.nome,
+        'cliente_id': c.cliente_id,
+        'venda_id': c.venda_id,
+        'valor_total': c.valor_total,
+        'valor_pago': c.valor_pago,
+        'valor_restante': c.valor_total - c.valor_pago,
+        'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
+        'status': c.status,
+        'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
+        'observacoes': c.observacoes
+    } for c in crediarios])
+
+@app.route('/api/crediarios', methods=['POST'])
+def criar_crediario():
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    crediario = Crediario(
+        cliente_id=data['cliente_id'],
+        venda_id=data['venda_id'],
+        valor_total=data['valor_total'],
+        data_vencimento=datetime.strptime(data['data_vencimento'], '%Y-%m-%d').date(),
+        observacoes=data.get('observacoes', '')
+    )
+    db.session.add(crediario)
+    db.session.commit()
+    return jsonify({'success': True, 'id': crediario.id})
+
+@app.route('/api/crediarios/<int:id>/pagar', methods=['POST'])
+def pagar_crediario(id):
+    crediario = Crediario.query.get_or_404(id)
+    data = request.json
+    
+    if not data or 'valor_pago' not in data:
+        return jsonify({'success': False, 'error': 'Valor de pagamento é obrigatório'}), 400
+    
+    valor_pago = float(data['valor_pago'])
+    
+    # Validações
+    if valor_pago <= 0:
+        return jsonify({'success': False, 'error': 'Valor de pagamento deve ser maior que zero'}), 400
+    
+    valor_restante = crediario.valor_total - crediario.valor_pago
+    if valor_pago > valor_restante:
+        return jsonify({'success': False, 'error': 'Valor de pagamento não pode ser maior que o valor restante'}), 400
+    
+    # Registrar o pagamento
+    pagamento = PagamentoCrediario(
+        crediario_id=crediario.id,
+        valor_pago=valor_pago,
+        observacoes=data.get('observacoes', '')
+    )
+    db.session.add(pagamento)
+    
+    # Atualizar valor pago do crediário
+    crediario.valor_pago += valor_pago
+    
+    # Atualizar observações se fornecidas
+    if data.get('observacoes'):
+        if crediario.observacoes:
+            crediario.observacoes += f"\n--- Pagamento em {datetime.now().strftime('%d/%m/%Y %H:%M')} ---\n{data['observacoes']}"
+        else:
+            crediario.observacoes = f"Pagamento em {datetime.now().strftime('%d/%m/%Y %H:%M')}: {data['observacoes']}"
+    
+    # Atualizar status
+    if crediario.valor_pago >= crediario.valor_total:
+        crediario.status = 'Pago'
+    elif crediario.data_vencimento < date.today():
+        crediario.status = 'Atrasado'
+    else:
+        crediario.status = 'Pendente'
+    
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'valor_pago': valor_pago,
+        'valor_restante': crediario.valor_total - crediario.valor_pago,
+        'status': crediario.status,
+        'pagamento_id': pagamento.id
+    })
+
+@app.route('/api/crediarios/cliente/<int:cliente_id>')
+def get_crediarios_cliente(cliente_id):
+    crediarios = Crediario.query.filter_by(cliente_id=cliente_id).order_by(Crediario.data_vencimento.asc()).all()
+    return jsonify([{
+        'id': c.id,
+        'valor_total': c.valor_total,
+        'valor_pago': c.valor_pago,
+        'valor_restante': c.valor_total - c.valor_pago,
+        'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
+        'status': c.status,
+        'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
+        'observacoes': c.observacoes
+    } for c in crediarios])
+
+@app.route('/api/crediarios/<int:id>')
+def get_crediario_detalhado(id):
+    crediario = Crediario.query.get_or_404(id)
+    return jsonify({
+        'id': crediario.id,
+        'cliente_nome': crediario.cliente.nome,
+        'cliente_id': crediario.cliente_id,
+        'venda_id': crediario.venda_id,
+        'valor_total': crediario.valor_total,
+        'valor_pago': crediario.valor_pago,
+        'valor_restante': crediario.valor_total - crediario.valor_pago,
+        'data_vencimento': crediario.data_vencimento.strftime('%d/%m/%Y'),
+        'status': crediario.status,
+        'data_criacao': crediario.data_criacao.strftime('%d/%m/%Y'),
+        'observacoes': crediario.observacoes,
+        'dias_vencimento': (crediario.data_vencimento - date.today()).days
+    })
+
+@app.route('/api/crediarios/<int:id>/pagamentos')
+def get_pagamentos_crediario(id):
+    crediario = Crediario.query.get_or_404(id)
+    pagamentos = PagamentoCrediario.query.filter_by(crediario_id=id).order_by(PagamentoCrediario.data_pagamento.desc()).all()
+    
+    return jsonify([{
+        'id': p.id,
+        'valor_pago': p.valor_pago,
+        'data_pagamento': p.data_pagamento.strftime('%d/%m/%Y %H:%M'),
+        'observacoes': p.observacoes
+    } for p in pagamentos])
 
 # API para vendas
 @app.route('/api/vendas', methods=['POST'])

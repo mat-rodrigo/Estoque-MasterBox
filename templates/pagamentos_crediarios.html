@@ -1,0 +1,615 @@
+{% extends "base.html" %}
+
+{% block title %}Pagamentos de Crediários - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-center">
+            <i class="fas fa-credit-card text-success me-3"></i>
+            Pagamentos de Crediários
+        </h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-search me-2"></i>
+                    Buscar Atacadista
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Buscar Atacadista:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="busca-atacadista" placeholder="Digite o nome ou CPF/CNPJ do atacadista...">
+                        <button class="btn btn-outline-secondary" type="button" onclick="limparBuscaAtacadista()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div id="lista-atacadistas" class="mt-2" style="display: none;">
+                        <div class="list-group" id="resultados-atacadistas"></div>
+                    </div>
+                    <div id="atacadista-selecionado" class="mt-2" style="display: none;">
+                        <div class="alert alert-success">
+                            <strong id="nome-atacadista"></strong><br>
+                            <small id="info-atacadista"></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-3" id="card-crediarios" style="display: none;">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    Crediários Pendentes
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="lista-crediarios">
+                    <p class="text-muted text-center">Carregando crediários...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-warning text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-calculator me-2"></i>
+                    Resumo Financeiro
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="resumo-financeiro">
+                    <p class="text-muted text-center">Selecione um atacadista para ver o resumo</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Pagamento -->
+<div class="modal fade" id="modalPagamento" tabindex="-1" aria-labelledby="modalPagamentoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="modalPagamentoLabel">
+                    <i class="fas fa-money-bill-wave me-2"></i>
+                    Realizar Pagamento
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6>Informações do Crediário:</h6>
+                    <p><strong>Atacadista:</strong> <span id="modal-atacadista-nome"></span></p>
+                    <p><strong>Valor Total:</strong> <span id="modal-valor-total" class="text-primary"></span></p>
+                    <p><strong>Valor Pago:</strong> <span id="modal-valor-pago" class="text-success"></span></p>
+                    <p><strong>Valor Restante:</strong> <span id="modal-valor-restante" class="text-warning"></span></p>
+                    <p><strong>Vencimento:</strong> <span id="modal-data-vencimento"></span></p>
+                    <p><strong>Status:</strong> <span id="modal-status"></span></p>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Valor do Pagamento (R$):</label>
+                    <input type="number" class="form-control" id="valor-pagamento" min="0.01" step="0.01" required>
+                    <small class="form-text text-muted">Digite o valor que deseja pagar</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Observações (opcional):</label>
+                    <textarea class="form-control" id="observacoes-pagamento" rows="3" placeholder="Observações sobre o pagamento..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-success" onclick="realizarPagamento()">
+                    <i class="fas fa-check me-2"></i>
+                    Confirmar Pagamento
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Histórico de Pagamentos -->
+<div class="modal fade" id="modalHistorico" tabindex="-1" aria-labelledby="modalHistoricoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="modalHistoricoLabel">
+                    <i class="fas fa-history me-2"></i>
+                    Histórico de Pagamentos
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6>Informações do Crediário:</h6>
+                    <p><strong>Atacadista:</strong> <span id="historico-atacadista-nome"></span></p>
+                    <p><strong>Valor Total:</strong> <span id="historico-valor-total" class="text-primary"></span></p>
+                    <p><strong>Valor Pago:</strong> <span id="historico-valor-pago" class="text-success"></span></p>
+                    <p><strong>Valor Restante:</strong> <span id="historico-valor-restante" class="text-warning"></span></p>
+                    <p><strong>Status:</strong> <span id="historico-status"></span></p>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>Histórico de Pagamentos:</h6>
+                    <div id="lista-pagamentos">
+                        <p class="text-muted text-center">Carregando histórico...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let atacadistas = [];
+let atacadistaSelecionado = null;
+let crediariosAtacadista = [];
+let crediarioSelecionado = null;
+
+$(document).ready(function() {
+    console.log('=== PÁGINA DE PAGAMENTOS DE CREDIÁRIOS CARREGADA ===');
+    carregarAtacadistas();
+    
+    // Verificar se há atacadista na URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const atacadistaId = urlParams.get('atacadista');
+    
+    if (atacadistaId) {
+        console.log('Atacadista pré-selecionado:', atacadistaId);
+        // Aguardar carregamento dos atacadistas e então selecionar
+        setTimeout(function() {
+            selecionarAtacadistaPorId(parseInt(atacadistaId));
+        }, 500);
+    }
+    
+    // Busca automática de atacadistas
+    let timeoutBuscaAtacadista;
+    $('#busca-atacadista').on('input', function() {
+        clearTimeout(timeoutBuscaAtacadista);
+        const busca = $(this).val().trim();
+        
+        timeoutBuscaAtacadista = setTimeout(function() {
+            buscarAtacadistas(busca);
+        }, 300);
+    });
+    
+    // Evento para valor do pagamento
+    $('#valor-pagamento').on('input', function() {
+        const valorPagamento = parseFloat($(this).val()) || 0;
+        const valorRestante = parseFloat($('#modal-valor-restante').text().replace('R$ ', '').replace(',', '.')) || 0;
+        
+        if (valorPagamento > valorRestante) {
+            $(this).addClass('is-invalid');
+            $(this).next('.invalid-feedback').remove();
+            $(this).after('<div class="invalid-feedback">O valor não pode ser maior que o valor restante</div>');
+        } else {
+            $(this).removeClass('is-invalid');
+            $(this).next('.invalid-feedback').remove();
+        }
+    });
+    
+    // Atualização automática do resumo financeiro a cada 30 segundos
+    setInterval(function() {
+        if (atacadistaSelecionado) {
+            console.log('Atualizando resumo financeiro automaticamente...');
+            calcularResumoFinanceiro();
+        }
+    }, 30000); // 30 segundos
+    
+    // Atualizar resumo quando a página ganhar foco
+    $(window).on('focus', function() {
+        if (atacadistaSelecionado) {
+            console.log('Página ganhou foco - atualizando resumo financeiro...');
+            carregarCrediariosAtacadista(atacadistaSelecionado.id);
+        }
+    });
+});
+
+function carregarAtacadistas() {
+    $.get('/api/clientes', function(data) {
+        atacadistas = data.filter(c => c.tipo === 'Atacadista');
+        console.log('Atacadistas carregados:', atacadistas.length);
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar atacadistas:', error);
+    });
+}
+
+function buscarAtacadistas(termo) {
+    if (!termo) {
+        $('#lista-atacadistas').hide();
+        return;
+    }
+    
+    const resultados = atacadistas.filter(a => 
+        a.nome.toLowerCase().includes(termo.toLowerCase()) ||
+        (a.cpf_cnpj && a.cpf_cnpj.includes(termo))
+    );
+    
+    const container = $('#resultados-atacadistas');
+    container.empty();
+    
+    if (resultados.length === 0) {
+        container.append('<div class="list-group-item text-muted">Nenhum atacadista encontrado</div>');
+    } else {
+        resultados.forEach(function(atacadista) {
+            const item = `
+                <div class="list-group-item list-group-item-action" onclick="selecionarAtacadista(${atacadista.id})">
+                    <strong>${atacadista.nome}</strong><br>
+                    <small class="text-muted">${atacadista.cpf_cnpj || 'CPF/CNPJ não informado'}</small>
+                </div>
+            `;
+            container.append(item);
+        });
+    }
+    
+    $('#lista-atacadistas').show();
+}
+
+function selecionarAtacadista(id) {
+    atacadistaSelecionado = atacadistas.find(a => a.id === id);
+    if (atacadistaSelecionado) {
+        $('#nome-atacadista').text(atacadistaSelecionado.nome);
+        $('#info-atacadista').text(`CPF/CNPJ: ${atacadistaSelecionado.cpf_cnpj || 'Não informado'}`);
+        $('#atacadista-selecionado').show();
+        $('#lista-atacadistas').hide();
+        $('#busca-atacadista').val(atacadistaSelecionado.nome);
+        
+        // Carregar crediários do atacadista
+        carregarCrediariosAtacadista(id);
+        calcularResumoFinanceiro();
+    }
+}
+
+function selecionarAtacadistaPorId(id) {
+    const atacadista = atacadistas.find(a => a.id === id);
+    if (atacadista) {
+        selecionarAtacadista(id);
+    } else {
+        console.log('Atacadista não encontrado, tentando novamente...');
+        // Tentar novamente após um delay se os atacadistas ainda não foram carregados
+        setTimeout(function() {
+            selecionarAtacadistaPorId(id);
+        }, 1000);
+    }
+}
+
+function limparBuscaAtacadista() {
+    $('#busca-atacadista').val('');
+    $('#lista-atacadistas').hide();
+    $('#atacadista-selecionado').hide();
+    $('#card-crediarios').hide();
+    atacadistaSelecionado = null;
+    $('#resumo-financeiro').html('<p class="text-muted text-center">Selecione um atacadista para ver o resumo</p>');
+}
+
+function carregarCrediariosAtacadista(clienteId) {
+    $.get(`/api/crediarios/cliente/${clienteId}`, function(data) {
+        crediariosAtacadista = data;
+        const container = $('#lista-crediarios');
+        
+        if (data.length === 0) {
+            container.html('<p class="text-muted text-center">Nenhum crediário pendente</p>');
+            $('#card-crediarios').show();
+            // Atualizar resumo mesmo sem crediários
+            calcularResumoFinanceiro();
+            return;
+        }
+        
+        let html = '<div class="list-group">';
+        data.forEach(function(crediario) {
+            const statusClass = crediario.status === 'Pago' ? 'list-group-item-success' : 
+                              crediario.status === 'Atrasado' ? 'list-group-item-danger' : 'list-group-item-warning';
+            
+            const statusBadge = crediario.status === 'Pago' ? 'success' : 
+                              crediario.status === 'Atrasado' ? 'danger' : 'warning';
+            
+            html += `
+                <div class="list-group-item ${statusClass}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between">
+                                <strong>R$ ${crediario.valor_restante.toFixed(2).replace('.', ',')}</strong>
+                                <span class="badge bg-${statusBadge}">${crediario.status}</span>
+                            </div>
+                            <small class="text-muted">Vencimento: ${crediario.data_vencimento}</small><br>
+                            <small class="text-muted">Criado em: ${crediario.data_criacao}</small>
+                        </div>
+                        <div class="ms-3">
+                            <button type="button" class="btn btn-sm btn-info me-1" onclick="verHistoricoPagamentos(${crediario.id})">
+                                <i class="fas fa-history me-1"></i>Histórico
+                            </button>
+                            ${crediario.status !== 'Pago' ? `
+                                <button type="button" class="btn btn-sm btn-success" onclick="abrirModalPagamento(${crediario.id})">
+                                    <i class="fas fa-money-bill-wave me-1"></i>Pagar
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        
+        container.html(html);
+        $('#card-crediarios').show();
+        
+        // Atualizar resumo financeiro automaticamente
+        calcularResumoFinanceiro();
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar crediários:', error);
+        $('#lista-crediarios').html('<p class="text-danger">Erro ao carregar crediários</p>');
+    });
+}
+
+function calcularResumoFinanceiro() {
+    if (!atacadistaSelecionado || crediariosAtacadista.length === 0) {
+        $('#resumo-financeiro').html('<p class="text-muted text-center">Selecione um atacadista para ver o resumo</p>');
+        return;
+    }
+    
+    // Mostrar indicador de atualização
+    const resumoContainer = $('#resumo-financeiro');
+    const loadingHtml = `
+        <div class="text-center">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                <span class="visually-hidden">Atualizando...</span>
+            </div>
+            <small class="text-muted">Atualizando resumo...</small>
+        </div>
+    `;
+    resumoContainer.html(loadingHtml);
+    
+    const totalDevido = crediariosAtacadista.reduce((sum, c) => sum + c.valor_restante, 0);
+    const totalPago = crediariosAtacadista.reduce((sum, c) => sum + (c.valor_total - c.valor_restante), 0);
+    const crediariosPendentes = crediariosAtacadista.filter(c => c.status !== 'Pago').length;
+    const crediariosAtrasados = crediariosAtacadista.filter(c => c.status === 'Atrasado').length;
+    
+    // Pequeno delay para mostrar o indicador de atualização
+    setTimeout(function() {
+        let html = `
+            <div class="text-center mb-3">
+                <h6>Resumo do Atacadista</h6>
+                <p class="text-muted">${atacadistaSelecionado.nome}</p>
+                <small class="text-muted">
+                    <i class="fas fa-sync-alt me-1"></i>Atualizado automaticamente
+                </small>
+                <br>
+                <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="atualizarResumoManual()">
+                    <i class="fas fa-sync-alt me-1"></i>Atualizar Agora
+                </button>
+            </div>
+            
+            <div class="row text-center">
+                <div class="col-6">
+                    <div class="border rounded p-2 mb-2">
+                        <small class="text-muted">Total Devido</small><br>
+                        <strong class="text-danger">R$ ${totalDevido.toFixed(2).replace('.', ',')}</strong>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="border rounded p-2 mb-2">
+                        <small class="text-muted">Total Pago</small><br>
+                        <strong class="text-success">R$ ${totalPago.toFixed(2).replace('.', ',')}</strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row text-center">
+                <div class="col-6">
+                    <div class="border rounded p-2 mb-2">
+                        <small class="text-muted">Pendentes</small><br>
+                        <strong class="text-warning">${crediariosPendentes}</strong>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="border rounded p-2 mb-2">
+                        <small class="text-muted">Atrasados</small><br>
+                        <strong class="text-danger">${crediariosAtrasados}</strong>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('#resumo-financeiro').html(html);
+    }, 300); // 300ms de delay
+}
+
+function abrirModalPagamento(crediarioId) {
+    crediarioSelecionado = crediariosAtacadista.find(c => c.id === crediarioId);
+    if (!crediarioSelecionado) {
+        alert('Crediário não encontrado!');
+        return;
+    }
+    
+    $('#modal-atacadista-nome').text(atacadistaSelecionado.nome);
+    $('#modal-valor-total').text('R$ ' + crediarioSelecionado.valor_total.toFixed(2).replace('.', ','));
+    $('#modal-valor-pago').text('R$ ' + (crediarioSelecionado.valor_total - crediarioSelecionado.valor_restante).toFixed(2).replace('.', ','));
+    $('#modal-valor-restante').text('R$ ' + crediarioSelecionado.valor_restante.toFixed(2).replace('.', ','));
+    $('#modal-data-vencimento').text(crediarioSelecionado.data_vencimento);
+    $('#modal-status').text(crediarioSelecionado.status);
+    
+    // Definir valor máximo do pagamento
+    $('#valor-pagamento').attr('max', crediarioSelecionado.valor_restante);
+    $('#valor-pagamento').val(crediarioSelecionado.valor_restante);
+    $('#observacoes-pagamento').val('');
+    
+    $('#modalPagamento').modal('show');
+}
+
+function realizarPagamento() {
+    const valorPagamento = parseFloat($('#valor-pagamento').val()) || 0;
+    const observacoes = $('#observacoes-pagamento').val();
+    
+    if (valorPagamento <= 0) {
+        alert('Digite um valor válido para o pagamento!');
+        return;
+    }
+    
+    if (valorPagamento > crediarioSelecionado.valor_restante) {
+        alert('O valor do pagamento não pode ser maior que o valor restante!');
+        return;
+    }
+    
+    const dadosPagamento = {
+        valor_pago: valorPagamento
+    };
+    
+    if (observacoes) {
+        dadosPagamento.observacoes = observacoes;
+    }
+    
+    // Mostrar loading
+    $('#modalPagamento .btn-success').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Processando...');
+    
+    $.ajax({
+        url: `/api/crediarios/${crediarioSelecionado.id}/pagar`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dadosPagamento),
+        success: function(response) {
+            console.log('Pagamento realizado:', response);
+            
+            // Fechar modal
+            $('#modalPagamento').modal('hide');
+            
+            // Mostrar mensagem de sucesso
+            mostrarMensagemSucesso('Pagamento realizado com sucesso!');
+            
+            // Recarregar crediários e resumo automaticamente
+            if (atacadistaSelecionado) {
+                carregarCrediariosAtacadista(atacadistaSelecionado.id);
+            }
+            
+            // Resetar botão
+            $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro ao realizar pagamento:', error);
+            alert('Erro ao realizar pagamento: ' + error);
+            
+            // Resetar botão
+            $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
+        }
+    });
+}
+
+function verHistoricoPagamentos(crediarioId) {
+    // Buscar informações detalhadas do crediário
+    $.get(`/api/crediarios/${crediarioId}`, function(crediario) {
+        $('#historico-atacadista-nome').text(crediario.cliente_nome);
+        $('#historico-valor-total').text('R$ ' + crediario.valor_total.toFixed(2).replace('.', ','));
+        $('#historico-valor-pago').text('R$ ' + crediario.valor_pago.toFixed(2).replace('.', ','));
+        $('#historico-valor-restante').text('R$ ' + crediario.valor_restante.toFixed(2).replace('.', ','));
+        $('#historico-status').text(crediario.status);
+        
+        // Buscar histórico de pagamentos
+        $.get(`/api/crediarios/${crediarioId}/pagamentos`, function(pagamentos) {
+            const container = $('#lista-pagamentos');
+            
+            if (pagamentos.length === 0) {
+                container.html('<p class="text-muted text-center">Nenhum pagamento registrado</p>');
+            } else {
+                let html = '<div class="table-responsive"><table class="table table-striped">';
+                html += '<thead><tr><th>Data</th><th>Valor</th><th>Observações</th></tr></thead><tbody>';
+                
+                pagamentos.forEach(function(pagamento) {
+                    html += `
+                        <tr>
+                            <td>${pagamento.data_pagamento}</td>
+                            <td class="text-success">R$ ${pagamento.valor_pago.toFixed(2).replace('.', ',')}</td>
+                            <td>${pagamento.observacoes || '-'}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table></div>';
+                container.html(html);
+            }
+            
+            $('#modalHistorico').modal('show');
+        }).fail(function(xhr, status, error) {
+            console.error('Erro ao carregar histórico:', error);
+            $('#lista-pagamentos').html('<p class="text-danger">Erro ao carregar histórico de pagamentos</p>');
+        });
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar crediário:', error);
+        alert('Erro ao carregar informações do crediário');
+    });
+}
+
+function mostrarMensagemSucesso(mensagem) {
+    // Criar toast de sucesso
+    const toastHtml = `
+        <div class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="fas fa-check-circle me-2"></i>${mensagem}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+    
+    // Adicionar toast ao container
+    if ($('#toast-container').length === 0) {
+        $('body').append('<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3"></div>');
+    }
+    
+    $('#toast-container').append(toastHtml);
+    
+    // Mostrar o último toast adicionado
+    const toast = $('#toast-container .toast').last();
+    const bsToast = new bootstrap.Toast(toast[0]);
+    bsToast.show();
+    
+    // Remover toast após ser fechado
+    toast.on('hidden.bs.toast', function() {
+        $(this).remove();
+    });
+}
+
+function atualizarResumoManual() {
+    if (atacadistaSelecionado) {
+        console.log('Atualização manual do resumo financeiro...');
+        carregarCrediariosAtacadista(atacadistaSelecionado.id);
+        mostrarMensagemSucesso('Resumo atualizado com sucesso!');
+    }
+}
+</script>
+
+<style>
+.list-group-item-action {
+    cursor: pointer;
+}
+
+.list-group-item-action:hover {
+    background-color: #f8f9fa;
+}
+
+body.dark-mode .list-group-item-action:hover {
+    background-color: #404040;
+}
+</style>
+{% endblock %} 

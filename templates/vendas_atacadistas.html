@@ -1,0 +1,796 @@
+{% extends "base.html" %}
+
+{% block title %}Vendas Atacadistas - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-center">
+            <i class="fas fa-store text-warning me-3"></i>
+            Vendas para Atacadistas
+        </h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-warning text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-plus-circle me-2"></i>
+                    Nova Venda - Atacadista
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Seleção do Atacadista -->
+                <div class="mb-3">
+                    <label class="form-label">Atacadista:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="busca-atacadista" placeholder="Buscar atacadista por nome ou CPF/CNPJ...">
+                        <button class="btn btn-outline-secondary" type="button" onclick="limparBuscaAtacadista()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div id="lista-atacadistas" class="mt-2" style="display: none;">
+                        <div class="list-group" id="resultados-atacadistas"></div>
+                    </div>
+                    <div id="atacadista-selecionado" class="mt-2" style="display: none;">
+                        <div class="alert alert-info">
+                            <strong id="nome-atacadista"></strong><br>
+                            <small id="info-atacadista"></small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status do Carregamento -->
+                <div class="mb-3">
+                    <label class="form-label">Status do Carregamento:</label>
+                    <div id="status-produtos" class="alert alert-info">
+                        Carregando produtos...
+                    </div>
+                </div>
+                
+                <!-- Seleção de Produtos -->
+                <div class="mb-3">
+                    <label class="form-label">Produto:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="produto-busca" placeholder="Digite o nome do produto...">
+                        <button class="btn btn-outline-secondary" type="button" onclick="limparBuscaProduto()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div id="lista-produtos-busca" class="mt-2" style="display: none;">
+                        <div class="list-group" id="resultados-produtos"></div>
+                    </div>
+                    <div id="produto-selecionado" class="mt-2" style="display: none;">
+                        <div class="alert alert-success">
+                            <strong id="nome-produto"></strong><br>
+                            <small id="info-produto"></small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Quantidade:</label>
+                    <input type="number" class="form-control" id="quantidade" min="1" value="1">
+                </div>
+                
+                <div class="mb-3">
+                    <button type="button" class="btn btn-warning" onclick="adicionarProduto()">
+                        <i class="fas fa-plus me-2"></i>
+                        Adicionar Produto
+                    </button>
+                </div>
+                
+                <hr>
+                
+                <!-- Lista de Produtos Selecionados -->
+                <div class="mb-3">
+                    <h6>Produtos Selecionados:</h6>
+                    <div id="lista-produtos" class="border rounded p-2" style="min-height: 100px;">
+                        <p class="text-muted text-center mb-0">Nenhum produto selecionado</p>
+                    </div>
+                </div>
+                
+                <!-- Totais -->
+                <div class="mb-3">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>Subtotal: <span id="subtotal" class="text-primary">R$ 0,00</span></h5>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Desconto: <span id="desconto-valor" class="text-danger">R$ 0,00</span></h5>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>Total: <span id="total" class="text-warning">R$ 0,00</span></h4>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-warning" onclick="abrirModalDesconto()">
+                                <i class="fas fa-percentage me-2"></i>Aplicar Desconto
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Botões de Ação -->
+                <button type="button" class="btn btn-warning" onclick="abrirModalCrediario()" id="btn-crediario" disabled>
+                    <i class="fas fa-credit-card me-2"></i>
+                    Finalizar com Crediário
+                </button>
+                
+                <button type="button" class="btn btn-secondary ms-2" onclick="recarregarProdutos()">
+                    <i class="fas fa-sync-alt me-2"></i>
+                    Recarregar Produtos
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history me-2"></i>
+                    Crediários do Atacadista
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="crediarios-atacadista">
+                    <p class="text-muted text-center">Selecione um atacadista para ver os crediários</p>
+                </div>
+                
+                <!-- Botão para acessar pagamentos -->
+                <div class="mt-3" id="btn-pagamentos-container" style="display: none;">
+                    <div class="alert alert-info mb-2">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Pagamentos Disponíveis</strong><br>
+                        <small>Este atacadista possui crediários pendentes</small>
+                    </div>
+                    <button type="button" class="btn btn-success w-100" onclick="abrirPagamentos()">
+                        <i class="fas fa-credit-card me-2"></i>
+                        Gerenciar Pagamentos
+                    </button>
+                    <small class="text-muted d-block text-center mt-1">
+                        Acesse a página de pagamentos para realizar pagamentos das compras pendentes
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Desconto -->
+<div class="modal fade" id="modalDesconto" tabindex="-1" aria-labelledby="modalDescontoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title" id="modalDescontoLabel">
+                    <i class="fas fa-percentage me-2"></i>
+                    Aplicar Desconto
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Subtotal da Venda:</label>
+                    <h4 id="subtotal-modal" class="text-primary">R$ 0,00</h4>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Desconto:</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="tipo-desconto" id="desconto-percentual" value="percentual" checked>
+                        <label class="form-check-label" for="desconto-percentual">
+                            Percentual (%)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="tipo-desconto" id="desconto-valor-fixo" value="valor-fixo">
+                        <label class="form-check-label" for="desconto-valor-fixo">
+                            Valor Fixo (R$)
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label" id="label-valor-desconto">Valor do Desconto (%):</label>
+                    <input type="number" class="form-control" id="valor-desconto" min="0" step="0.01" value="0">
+                    <small class="form-text text-muted" id="texto-ajuda-desconto">Digite o percentual de desconto (0-100%)</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Preview:</label>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p>Desconto: <span id="desconto-aplicado" class="text-danger">R$ 0,00</span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p>Total Final: <span id="total-final" class="text-success">R$ 0,00</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="removerDesconto()">
+                    <i class="fas fa-times me-2"></i>
+                    Remover Desconto
+                </button>
+                <button type="button" class="btn btn-warning" onclick="aplicarDesconto()">
+                    <i class="fas fa-check me-2"></i>
+                    Aplicar Desconto
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Crediário -->
+<div class="modal fade" id="modalCrediario" tabindex="-1" aria-labelledby="modalCrediarioLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title" id="modalCrediarioLabel">
+                    <i class="fas fa-credit-card me-2"></i>
+                    Configurar Crediário
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Informações da Venda:</h6>
+                        <p><strong>Atacadista:</strong> <span id="modal-atacadista-nome"></span></p>
+                        <p><strong>Total da Venda:</strong> <span id="modal-total-venda" class="text-warning"></span></p>
+                        <p><strong>Data de Vencimento:</strong></p>
+                        <input type="date" class="form-control" id="data-vencimento" required>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Observações:</h6>
+                        <textarea class="form-control" id="observacoes-crediario" rows="4" placeholder="Observações sobre o crediário..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-warning" onclick="finalizarVendaCrediario()">
+                    <i class="fas fa-check me-2"></i>
+                    Finalizar Venda
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let produtos = [];
+let atacadistas = [];
+let produtosSelecionados = [];
+let totalVenda = 0;
+let descontoAplicado = 0;
+let tipoDesconto = 'percentual';
+let atacadistaSelecionado = null;
+let produtoSelecionado = null;
+
+$(document).ready(function() {
+    console.log('=== PÁGINA DE VENDAS ATACADISTAS CARREGADA ===');
+    carregarProdutos();
+    carregarAtacadistas();
+    
+    // Busca automática de atacadistas
+    let timeoutBuscaAtacadista;
+    $('#busca-atacadista').on('input', function() {
+        clearTimeout(timeoutBuscaAtacadista);
+        const busca = $(this).val().trim();
+        
+        timeoutBuscaAtacadista = setTimeout(function() {
+            buscarAtacadistas(busca);
+        }, 300);
+    });
+    
+    // Busca automática de produtos
+    let timeoutBuscaProduto;
+    $('#produto-busca').on('input', function() {
+        clearTimeout(timeoutBuscaProduto);
+        const busca = $(this).val().trim();
+        
+        timeoutBuscaProduto = setTimeout(function() {
+            buscarProdutos(busca);
+        }, 300);
+    });
+    
+    // Eventos para desconto
+    $('#valor-desconto').on('input', function() {
+        atualizarPreviewDesconto();
+    });
+    
+    $('input[name="tipo-desconto"]').on('change', function() {
+        const tipo = $(this).val();
+        const input = $('#valor-desconto');
+        const label = $('#label-valor-desconto');
+        const texto = $('#texto-ajuda-desconto');
+        
+        if (tipo === 'percentual') {
+            input.attr('max', '100');
+            label.text('Valor do Desconto (%):');
+            texto.text('Digite o percentual de desconto (0-100%)');
+        } else {
+            input.removeAttr('max');
+            label.text('Valor do Desconto (R$):');
+            texto.text('Digite o valor fixo do desconto');
+        }
+        
+        atualizarPreviewDesconto();
+    });
+});
+
+function carregarProdutos() {
+    console.log('Carregando produtos...');
+    $('#status-produtos').html('<i class="fas fa-spinner fa-spin me-2"></i>Carregando produtos...');
+    
+    $.get('/api/produtos', function(data) {
+        console.log('Produtos carregados:', data);
+        produtos = data;
+        
+        $('#status-produtos').html(`<i class="fas fa-check-circle me-2"></i>${produtos.length} produtos carregados`);
+        
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar produtos:', error);
+        $('#status-produtos').html('<i class="fas fa-exclamation-triangle me-2"></i>Erro ao carregar produtos');
+    });
+}
+
+function buscarProdutos(termo) {
+    if (!termo) {
+        $('#lista-produtos-busca').hide();
+        return;
+    }
+    
+    const resultados = produtos.filter(p => 
+        p.nome.toLowerCase().includes(termo.toLowerCase()) &&
+        p.quantidade > 0
+    );
+    
+    const container = $('#resultados-produtos');
+    container.empty();
+    
+    if (resultados.length === 0) {
+        container.append('<div class="list-group-item text-muted">Nenhum produto encontrado</div>');
+    } else {
+        resultados.forEach(function(produto) {
+            const item = `
+                <div class="list-group-item list-group-item-action" onclick="selecionarProduto(${produto.id})">
+                    <strong>${produto.nome}</strong><br>
+                    <small class="text-muted">Estoque: ${produto.quantidade} | Preço: R$ ${produto.valor_custo.toFixed(2).replace('.', ',')}</small>
+                </div>
+            `;
+            container.append(item);
+        });
+    }
+    
+    $('#lista-produtos-busca').show();
+}
+
+function selecionarProduto(id) {
+    produtoSelecionado = produtos.find(p => p.id === id);
+    if (produtoSelecionado) {
+        $('#nome-produto').text(produtoSelecionado.nome);
+        $('#info-produto').text(`Estoque: ${produtoSelecionado.quantidade} | Preço: R$ ${produtoSelecionado.valor_custo.toFixed(2).replace('.', ',')}`);
+        $('#produto-selecionado').show();
+        $('#lista-produtos-busca').hide();
+        $('#produto-busca').val(produtoSelecionado.nome);
+    }
+}
+
+function limparBuscaProduto() {
+    $('#produto-busca').val('');
+    $('#lista-produtos-busca').hide();
+    $('#produto-selecionado').hide();
+    produtoSelecionado = null;
+}
+
+function carregarAtacadistas() {
+    $.get('/api/clientes', function(data) {
+        atacadistas = data.filter(c => c.tipo === 'Atacadista');
+        console.log('Atacadistas carregados:', atacadistas.length);
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar atacadistas:', error);
+    });
+}
+
+function buscarAtacadistas(termo) {
+    if (!termo) {
+        $('#lista-atacadistas').hide();
+        return;
+    }
+    
+    const resultados = atacadistas.filter(a => 
+        a.nome.toLowerCase().includes(termo.toLowerCase()) ||
+        (a.cpf_cnpj && a.cpf_cnpj.includes(termo))
+    );
+    
+    const container = $('#resultados-atacadistas');
+    container.empty();
+    
+    if (resultados.length === 0) {
+        container.append('<div class="list-group-item text-muted">Nenhum atacadista encontrado</div>');
+    } else {
+        resultados.forEach(function(atacadista) {
+            const item = `
+                <div class="list-group-item list-group-item-action" onclick="selecionarAtacadista(${atacadista.id})">
+                    <strong>${atacadista.nome}</strong><br>
+                    <small class="text-muted">${atacadista.cpf_cnpj || 'CPF/CNPJ não informado'}</small>
+                </div>
+            `;
+            container.append(item);
+        });
+    }
+    
+    $('#lista-atacadistas').show();
+}
+
+function selecionarAtacadista(id) {
+    atacadistaSelecionado = atacadistas.find(a => a.id === id);
+    if (atacadistaSelecionado) {
+        $('#nome-atacadista').text(atacadistaSelecionado.nome);
+        $('#info-atacadista').text(`CPF/CNPJ: ${atacadistaSelecionado.cpf_cnpj || 'Não informado'}`);
+        $('#atacadista-selecionado').show();
+        $('#lista-atacadistas').hide();
+        $('#busca-atacadista').val(atacadistaSelecionado.nome);
+        
+        // Habilitar botão de crediário
+        $('#btn-crediario').prop('disabled', false);
+        
+        // Carregar crediários do atacadista
+        carregarCrediariosAtacadista(id);
+    }
+}
+
+function limparBuscaAtacadista() {
+    $('#busca-atacadista').val('');
+    $('#lista-atacadistas').hide();
+    $('#atacadista-selecionado').hide();
+    atacadistaSelecionado = null;
+    $('#btn-crediario').prop('disabled', true);
+    $('#crediarios-atacadista').html('<p class="text-muted text-center">Selecione um atacadista para ver os crediários</p>');
+    $('#btn-pagamentos-container').hide();
+}
+
+function carregarCrediariosAtacadista(clienteId) {
+    $.get(`/api/crediarios/cliente/${clienteId}`, function(data) {
+        const container = $('#crediarios-atacadista');
+        
+        // Filtrar apenas crediários pendentes
+        const crediariosPendentes = data.filter(c => c.status !== 'Pago');
+        if (crediariosPendentes.length === 0) {
+            container.html('<p class="text-muted text-center">Nenhuma dívida pendente</p>');
+            $('#btn-pagamentos-container').hide();
+            return;
+        }
+        
+        let html = '<div class="list-group">';
+        crediariosPendentes.forEach(function(crediario) {
+            const statusClass = crediario.status === 'Atrasado' ? 'list-group-item-danger' : 'list-group-item-warning';
+            html += `
+                <div class="list-group-item ${statusClass}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>R$ ${crediario.valor_restante.toFixed(2).replace('.', ',')}</strong><br>
+                            <small>Vencimento: ${crediario.data_vencimento}</small>
+                        </div>
+                        <span class="badge bg-${crediario.status === 'Atrasado' ? 'danger' : 'warning'}">${crediario.status}</span>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        
+        container.html(html);
+        
+        // Mostrar botão de pagamentos quando há crediários
+        $('#btn-pagamentos-container').show();
+        
+        // Atualizar texto do botão com quantidade de crediários pendentes
+        const totalPendente = crediariosPendentes.reduce((sum, c) => sum + c.valor_restante, 0);
+        
+        $('#btn-pagamentos-container .btn').html(`
+            <i class="fas fa-credit-card me-2"></i>
+            Gerenciar Pagamentos (${crediariosPendentes.length} pendentes)
+        `);
+        
+        $('#btn-pagamentos-container small').html(`
+            Total pendente: R$ ${totalPendente.toFixed(2).replace('.', ',')} - 
+            Acesse a página de pagamentos para realizar pagamentos das compras pendentes
+        `);
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar crediários:', error);
+        $('#crediarios-atacadista').html('<p class="text-danger">Erro ao carregar crediários</p>');
+        $('#btn-pagamentos-container').hide();
+    });
+}
+
+function adicionarProduto() {
+    const quantidade = parseInt($('#quantidade').val());
+    
+    if (!produtoSelecionado || !quantidade || quantidade <= 0) {
+        alert('Selecione um produto e uma quantidade válida!');
+        return;
+    }
+    
+    if (quantidade > produtoSelecionado.quantidade) {
+        alert(`Quantidade solicitada (${quantidade}) excede o estoque disponível (${produtoSelecionado.quantidade})!`);
+        return;
+    }
+    
+    const produtoExistente = produtosSelecionados.find(p => p.id == produtoSelecionado.id);
+    if (produtoExistente) {
+        alert('Este produto já foi adicionado à venda!');
+        return;
+    }
+    
+    produtosSelecionados.push({
+        id: produtoSelecionado.id,
+        nome: produtoSelecionado.nome,
+        quantidade: quantidade,
+        valor_unitario: produtoSelecionado.valor_custo,
+        valor_total: produtoSelecionado.valor_custo * quantidade
+    });
+    
+    atualizarListaProdutos();
+    calcularTotalGeral();
+    
+    // Limpar seleção de produto
+    limparBuscaProduto();
+    $('#quantidade').val(1);
+}
+
+function removerProduto(index) {
+    produtosSelecionados.splice(index, 1);
+    atualizarListaProdutos();
+    calcularTotalGeral();
+}
+
+function atualizarListaProdutos() {
+    const container = $('#lista-produtos');
+    
+    if (produtosSelecionados.length === 0) {
+        container.html('<p class="text-muted text-center mb-0">Nenhum produto selecionado</p>');
+        return;
+    }
+    
+    let html = '';
+    produtosSelecionados.forEach(function(produto, index) {
+        html += `
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                <div>
+                    <strong>${produto.nome}</strong><br>
+                    <small class="text-muted">${produto.quantidade} x R$ ${produto.valor_unitario.toFixed(2).replace('.', ',')} = R$ ${produto.valor_total.toFixed(2).replace('.', ',')}</small>
+                </div>
+                <button type="button" class="btn btn-sm btn-danger" onclick="removerProduto(${index})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+    });
+    container.html(html);
+}
+
+function calcularTotalGeral() {
+    totalVenda = produtosSelecionados.reduce((sum, produto) => sum + produto.valor_total, 0);
+    const subtotal = totalVenda;
+    const totalComDesconto = subtotal - descontoAplicado;
+    
+    $('#subtotal').text('R$ ' + subtotal.toFixed(2).replace('.', ','));
+    $('#desconto-valor').text('R$ ' + descontoAplicado.toFixed(2).replace('.', ','));
+    $('#total').text('R$ ' + totalComDesconto.toFixed(2).replace('.', ','));
+}
+
+function abrirModalDesconto() {
+    if (produtosSelecionados.length === 0) {
+        alert('Adicione pelo menos um produto à venda!');
+        return;
+    }
+    
+    $('#subtotal-modal').text('R$ ' + totalVenda.toFixed(2).replace('.', ','));
+    $('#valor-desconto').val(0);
+    atualizarPreviewDesconto();
+    $('#modalDesconto').modal('show');
+}
+
+function atualizarPreviewDesconto() {
+    const valorDesconto = parseFloat($('#valor-desconto').val()) || 0;
+    const tipo = $('input[name="tipo-desconto"]:checked').val();
+    
+    let descontoCalculado = 0;
+    if (tipo === 'percentual') {
+        descontoCalculado = (totalVenda * valorDesconto) / 100;
+    } else {
+        descontoCalculado = valorDesconto;
+    }
+    
+    const totalFinal = totalVenda - descontoCalculado;
+    
+    $('#desconto-aplicado').text('R$ ' + descontoCalculado.toFixed(2).replace('.', ','));
+    $('#total-final').text('R$ ' + totalFinal.toFixed(2).replace('.', ','));
+}
+
+function aplicarDesconto() {
+    const valorDesconto = parseFloat($('#valor-desconto').val()) || 0;
+    const tipo = $('input[name="tipo-desconto"]:checked').val();
+    
+    if (valorDesconto < 0) {
+        alert('O valor do desconto não pode ser negativo!');
+        return;
+    }
+    
+    if (tipo === 'percentual' && valorDesconto > 100) {
+        alert('O percentual de desconto não pode ser maior que 100%!');
+        return;
+    }
+    
+    if (tipo === 'valor-fixo' && valorDesconto > totalVenda) {
+        alert('O desconto não pode ser maior que o valor total da venda!');
+        return;
+    }
+    
+    if (tipo === 'percentual') {
+        descontoAplicado = (totalVenda * valorDesconto) / 100;
+    } else {
+        descontoAplicado = valorDesconto;
+    }
+    
+    tipoDesconto = tipo;
+    calcularTotalGeral();
+    $('#modalDesconto').modal('hide');
+    alert('Desconto aplicado com sucesso!');
+}
+
+function removerDesconto() {
+    descontoAplicado = 0;
+    tipoDesconto = 'percentual';
+    calcularTotalGeral();
+    $('#modalDesconto').modal('hide');
+    alert('Desconto removido!');
+}
+
+function abrirModalCrediario() {
+    if (!atacadistaSelecionado) {
+        alert('Selecione um atacadista primeiro!');
+        return;
+    }
+    
+    if (produtosSelecionados.length === 0) {
+        alert('Adicione pelo menos um produto à venda!');
+        return;
+    }
+    
+    const valorComDesconto = totalVenda - descontoAplicado;
+    
+    $('#modal-atacadista-nome').text(atacadistaSelecionado.nome);
+    $('#modal-total-venda').text('R$ ' + valorComDesconto.toFixed(2).replace('.', ','));
+    
+    // Definir data de vencimento padrão (30 dias)
+    const hoje = new Date();
+    const vencimento = new Date(hoje.getTime() + (30 * 24 * 60 * 60 * 1000));
+    $('#data-vencimento').val(vencimento.toISOString().split('T')[0]);
+    
+    $('#modalCrediario').modal('show');
+}
+
+function finalizarVendaCrediario() {
+    const dataVencimento = $('#data-vencimento').val();
+    const observacoes = $('#observacoes-crediario').val();
+    
+    if (!dataVencimento) {
+        alert('Selecione uma data de vencimento!');
+        return;
+    }
+    
+    const valorComDesconto = totalVenda - descontoAplicado;
+    
+    // Primeiro, registrar a venda
+    const dadosVenda = {
+        cliente: atacadistaSelecionado.nome,
+        valor_total: valorComDesconto,
+        parcelas: 1,
+        pagamentos: [{
+            tipo_pagamento: 'Crediário',
+            valor: valorComDesconto,
+            parcelas: 1
+        }],
+        itens: produtosSelecionados.map(produto => ({
+            produto_id: parseInt(produto.id),
+            quantidade: produto.quantidade
+        }))
+    };
+    
+    $.ajax({
+        url: '/api/vendas',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dadosVenda),
+        success: function(response) {
+            console.log('Venda registrada:', response);
+            
+            // Agora criar o crediário
+            const dadosCrediario = {
+                cliente_id: atacadistaSelecionado.id,
+                venda_id: response.id,
+                valor_total: valorComDesconto,
+                data_vencimento: dataVencimento,
+                observacoes: observacoes
+            };
+            
+            $.ajax({
+                url: '/api/crediarios',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(dadosCrediario),
+                success: function(responseCrediario) {
+                    console.log('Crediário criado:', responseCrediario);
+                    alert('Venda finalizada com sucesso! Crediário criado.');
+                    
+                    // Limpar formulário
+                    $('#modalCrediario').modal('hide');
+                    produtosSelecionados = [];
+                    atualizarListaProdutos();
+                    descontoAplicado = 0;
+                    calcularTotalGeral();
+                    limparBuscaAtacadista();
+                    
+                    // Recarregar produtos e crediários
+                    carregarProdutos();
+                    if (atacadistaSelecionado) {
+                        carregarCrediariosAtacadista(atacadistaSelecionado.id);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Erro ao criar crediário:', error);
+                    alert('Erro ao criar crediário: ' + error);
+                }
+            });
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro na venda:', error);
+            alert('Erro ao registrar venda: ' + error);
+        }
+    });
+}
+
+function abrirPagamentos() {
+    if (!atacadistaSelecionado) {
+        alert('Selecione um atacadista primeiro!');
+        return;
+    }
+    
+    // Redirecionar para a página de pagamentos com o atacadista pré-selecionado
+    const url = `/pagamentos-crediarios?atacadista=${atacadistaSelecionado.id}`;
+    window.location.href = url;
+}
+
+function recarregarProdutos() {
+    console.log('Recarregando produtos...');
+    carregarProdutos();
+}
+</script>
+
+<style>
+.list-group-item-action {
+    cursor: pointer;
+}
+
+.list-group-item-action:hover {
+    background-color: #f8f9fa;
+}
+
+body.dark-mode .list-group-item-action:hover {
+    background-color: #404040;
+}
+</style>
+{% endblock %} 

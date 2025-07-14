@@ -35,9 +35,21 @@
                 
                 <div class="mb-3">
                     <label class="form-label">Produto:</label>
-                    <select class="form-select" id="produto-select">
-                        <option value="">Selecione um produto</option>
-                    </select>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="produto-busca" placeholder="Digite o nome do produto...">
+                        <button class="btn btn-outline-secondary" type="button" onclick="limparBuscaProduto()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div id="lista-produtos-busca" class="mt-2" style="display: none;">
+                        <div class="list-group" id="resultados-produtos"></div>
+                    </div>
+                    <div id="produto-selecionado" class="mt-2" style="display: none;">
+                        <div class="alert alert-success">
+                            <strong id="nome-produto"></strong><br>
+                            <small id="info-produto"></small>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="mb-3">
@@ -370,6 +382,7 @@ let metodosPagamento = [];
 let totalVenda = 0;
 let descontoAplicado = 0;
 let tipoDesconto = 'percentual'; // 'percentual' ou 'valor-fixo'
+let produtoSelecionado = null;
 
 $(document).ready(function() {
     console.log('=== PÁGINA DE VENDAS SIMPLES CARREGADA ===');
@@ -382,15 +395,15 @@ $(document).ready(function() {
     carregarProdutos(false);
     carregarVendas();
     
-    // Eventos
-    $('#produto-select').on('change', function() {
-        const produtoId = $(this).val();
-        if (produtoId) {
-            const produto = produtos.find(p => p.id == produtoId);
-            if (produto) {
-                $('#quantidade').attr('max', produto.quantidade);
-            }
-        }
+    // Busca automática de produtos
+    let timeoutBuscaProduto;
+    $('#produto-busca').on('input', function() {
+        clearTimeout(timeoutBuscaProduto);
+        const busca = $(this).val().trim();
+        
+        timeoutBuscaProduto = setTimeout(function() {
+            buscarProdutos(busca);
+        }, 300);
     });
     
     // Adicionar hover effect aos cards de pagamento
@@ -437,17 +450,6 @@ function carregarProdutos(mostrarMensagemRecarregamento = false) {
         console.log('Resposta da API:', data);
         produtos = data;
         
-        // Atualizar select
-        const select = $('#produto-select');
-        select.empty().append('<option value="">Selecione um produto</option>');
-        
-        produtos.forEach(function(produto) {
-            if (produto.quantidade > 0) {
-                const option = `<option value="${produto.id}" data-preco="${produto.valor_custo}">${produto.nome} (Estoque: ${produto.quantidade})</option>`;
-                select.append(option);
-            }
-        });
-        
         if (mostrarMensagemRecarregamento) {
             $('#status-produtos').html(`<i class="fas fa-check-circle me-2"></i>${produtos.length} produtos atualizados após venda`);
             // Remover a mensagem após 3 segundos
@@ -479,33 +481,76 @@ function carregarVendas() {
     });
 }
 
+function buscarProdutos(termo) {
+    if (!termo) {
+        $('#lista-produtos-busca').hide();
+        return;
+    }
+    
+    const resultados = produtos.filter(p => 
+        p.nome.toLowerCase().includes(termo.toLowerCase()) &&
+        p.quantidade > 0
+    );
+    
+    const container = $('#resultados-produtos');
+    container.empty();
+    
+    if (resultados.length === 0) {
+        container.append('<div class="list-group-item text-muted">Nenhum produto encontrado</div>');
+    } else {
+        resultados.forEach(function(produto) {
+            const item = `
+                <div class="list-group-item list-group-item-action" onclick="selecionarProduto(${produto.id})">
+                    <strong>${produto.nome}</strong><br>
+                    <small class="text-muted">Estoque: ${produto.quantidade} | Preço: R$ ${produto.valor_custo.toFixed(2).replace('.', ',')}</small>
+                </div>
+            `;
+            container.append(item);
+        });
+    }
+    
+    $('#lista-produtos-busca').show();
+}
+
+function selecionarProduto(id) {
+    produtoSelecionado = produtos.find(p => p.id === id);
+    if (produtoSelecionado) {
+        $('#nome-produto').text(produtoSelecionado.nome);
+        $('#info-produto').text(`Estoque: ${produtoSelecionado.quantidade} | Preço: R$ ${produtoSelecionado.valor_custo.toFixed(2).replace('.', ',')}`);
+        $('#produto-selecionado').show();
+        $('#lista-produtos-busca').hide();
+        $('#produto-busca').val(produtoSelecionado.nome);
+        $('#quantidade').attr('max', produtoSelecionado.quantidade);
+    }
+}
+
+function limparBuscaProduto() {
+    $('#produto-busca').val('');
+    $('#lista-produtos-busca').hide();
+    $('#produto-selecionado').hide();
+    produtoSelecionado = null;
+}
+
 function recarregarProdutos() {
     console.log('Recarregando produtos manualmente...');
     carregarProdutos(false); // false = não mostrar mensagem de recarregamento automático
 }
 
 function adicionarProduto() {
-    const produtoId = $('#produto-select').val();
     const quantidade = parseInt($('#quantidade').val());
     
-    if (!produtoId || !quantidade || quantidade <= 0) {
+    if (!produtoSelecionado || !quantidade || quantidade <= 0) {
         alert('Selecione um produto e uma quantidade válida!');
         return;
     }
     
-    const produto = produtos.find(p => p.id == produtoId);
-    if (!produto) {
-        alert('Produto não encontrado!');
-        return;
-    }
-    
-    if (quantidade > produto.quantidade) {
-        alert(`Quantidade solicitada (${quantidade}) excede o estoque disponível (${produto.quantidade})!`);
+    if (quantidade > produtoSelecionado.quantidade) {
+        alert(`Quantidade solicitada (${quantidade}) excede o estoque disponível (${produtoSelecionado.quantidade})!`);
         return;
     }
     
     // Verificar se o produto já está na lista
-    const produtoExistente = produtosSelecionados.find(p => p.id == produtoId);
+    const produtoExistente = produtosSelecionados.find(p => p.id == produtoSelecionado.id);
     if (produtoExistente) {
         alert('Este produto já foi adicionado à venda!');
         return;
@@ -513,18 +558,18 @@ function adicionarProduto() {
     
     // Adicionar produto à lista
     produtosSelecionados.push({
-        id: produtoId,
-        nome: produto.nome,
+        id: produtoSelecionado.id,
+        nome: produtoSelecionado.nome,
         quantidade: quantidade,
-        valor_unitario: produto.valor_custo,
-        valor_total: produto.valor_custo * quantidade
+        valor_unitario: produtoSelecionado.valor_custo,
+        valor_total: produtoSelecionado.valor_custo * quantidade
     });
     
     atualizarListaProdutos();
     calcularTotalGeral();
     
     // Limpar campos
-    $('#produto-select').val('');
+    limparBuscaProduto();
     $('#quantidade').val(1);
 }
 
