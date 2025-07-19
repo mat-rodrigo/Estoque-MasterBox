@@ -51,6 +51,31 @@
 .nav-tabs .nav-link:hover {
     opacity: 0.9;
 }
+
+/* Deixar todas as abas com títulos visíveis e legíveis */
+.nav-tabs .nav-link {
+    color: #564f4f94 !important;
+    font-weight: 500;
+    opacity: 1 !important;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-bottom: none;
+    transition: background 0.2s, color 0.2s;
+}
+
+.nav-tabs .nav-link.active {
+    font-weight: bold;
+    background: #fff !important;
+    color: #494e54 !important;
+    border-bottom: 2px solid #007bff !important;
+    z-index: 2;
+}
+
+.nav-tabs .nav-link:hover {
+    background: #e9ecef;
+    color: #007bff !important;
+    opacity: 1 !important;
+}
 </style>
 <div class="row mb-4">
     <div class="col-12">
@@ -186,22 +211,22 @@
             <div class="card-header">
                 <ul class="nav nav-tabs card-header-tabs" id="saidasTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="devolucoes-tab" data-bs-toggle="tab" data-bs-target="#devolucoes" type="button" role="tab" style="color: #856404; border-color: #e1b524;">
+                        <button class="nav-link active" id="devolucoes-tab" data-bs-toggle="tab" data-bs-target="#devolucoes" type="button" role="tab" style="color: #856404;">
                             <i class="fas fa-undo me-2"></i>Devoluções
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="premiacoes-tab" data-bs-toggle="tab" data-bs-target="#premiacoes" type="button" role="tab" style="color: #155724; border-color: #24f955;">
+                        <button class="nav-link" id="premiacoes-tab" data-bs-toggle="tab" data-bs-target="#premiacoes" type="button" role="tab" style="color: #155724;">
                             <i class="fas fa-trophy me-2"></i>Premiações
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="avarias-tab" data-bs-toggle="tab" data-bs-target="#avarias" type="button" role="tab" style="color: #721c24; border-color: #f34556;">
+                        <button class="nav-link" id="avarias-tab" data-bs-toggle="tab" data-bs-target="#avarias" type="button" role="tab" style="color: #721c24;">
                             <i class="fas fa-exclamation-triangle me-2"></i>Avaria de Produtos
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="compras-tab" data-bs-toggle="tab" data-bs-target="#compras" type="button" role="tab" style="color: #004085; border-color: #3eddf5;">
+                        <button class="nav-link" id="compras-tab" data-bs-toggle="tab" data-bs-target="#compras" type="button" role="tab" style="color: #004085;">
                             <i class="fas fa-shopping-cart me-2"></i>pagamentos fornecedores
                         </button>
                     </li>

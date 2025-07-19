@@ -39,7 +39,7 @@
             <div class="card-body text-center">
                 <i class="fas fa-dollar-sign fa-3x mb-3"></i>
                 <h3 class="card-title" id="faturamento-hoje">R$ 0,00</h3>
-                <p class="card-text">Faturamento Hoje</p>
+                <p class="card-text">Caixa do Dia</p>
             </div>
         </div>
     </div>
@@ -146,8 +146,10 @@ function carregarEstatisticas() {
         
         $('#total-vendas').text(vendasHoje.length);
         
-        const faturamento = vendasHoje.reduce((total, venda) => total + venda.valor_total, 0);
-        $('#faturamento-hoje').text('R$ ' + faturamento.toFixed(2).replace('.', ','));
+    });
+    // Carregar valor do caixa diário
+    $.get('/api/caixa-diario/hoje', function(caixa) {
+        $('#faturamento-hoje').text('R$ ' + (caixa.saldo_final || 0).toFixed(2).replace('.', ','));
     });
 }
 

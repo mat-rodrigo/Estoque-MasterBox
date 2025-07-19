@@ -91,7 +91,7 @@ class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(200), nullable=False)
     tipo = db.Column(db.String(50), default='Cliente')  # 'Cliente' ou 'Atacadista'
-    cpf_cnpj = db.Column(db.String(20), unique=True)
+    cpf_cnpj = db.Column(db.String(20))  # Removida constraint unique=True
     telefone = db.Column(db.String(20))
     email = db.Column(db.String(100))
     endereco = db.Column(db.Text)
@@ -120,6 +120,15 @@ class PagamentoCrediario(db.Model):
     valor_pago = db.Column(db.Float, nullable=False)
     data_pagamento = db.Column(db.DateTime, default=datetime.utcnow)
     observacoes = db.Column(db.Text)
+
+class DevolucaoCrediario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    crediario_id = db.Column(db.Integer, db.ForeignKey('crediario.id'), nullable=False)
+    produtos_devolvidos = db.Column(db.Text)  # Lista de produtos como JSON string
+    valor_devolvido = db.Column(db.Float, nullable=False)
+    data_devolucao = db.Column(db.DateTime, default=datetime.utcnow)
+    observacoes = db.Column(db.Text)
+    crediario = db.relationship('Crediario')
 
 # Criar banco de dados
 with app.app_context():
@@ -256,9 +265,9 @@ def adicionar_cliente():
     if not data:
         return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
     
-    # Verificar se CPF/CNPJ já existe
+    # Verificar se CPF/CNPJ já existe (apenas em clientes ativos)
     if data.get('cpf_cnpj'):
-        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj']).first()
+        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj'], ativo=True).first()
         if cliente_existente:
             return jsonify({'success': False, 'error': 'CPF/CNPJ já cadastrado'}), 400
     
@@ -282,9 +291,9 @@ def atualizar_cliente(id):
     if not data:
         return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
     
-    # Verificar se CPF/CNPJ já existe em outro cliente
+    # Verificar se CPF/CNPJ já existe em outro cliente ativo
     if data.get('cpf_cnpj') and data['cpf_cnpj'] != cliente.cpf_cnpj:
-        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj']).first()
+        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj'], ativo=True).first()
         if cliente_existente:
             return jsonify({'success': False, 'error': 'CPF/CNPJ já cadastrado'}), 400
     
@@ -349,13 +358,17 @@ def pagar_crediario(id):
     if not data or 'valor_pago' not in data:
         return jsonify({'success': False, 'error': 'Valor de pagamento é obrigatório'}), 400
     
+    # Verificar se há valor restante para pagar
+    valor_restante = crediario.valor_total - crediario.valor_pago
+    if valor_restante <= 0:
+        return jsonify({'success': False, 'error': 'Não há valor restante para pagar'}), 400
+    
     valor_pago = float(data['valor_pago'])
     
     # Validações
     if valor_pago <= 0:
         return jsonify({'success': False, 'error': 'Valor de pagamento deve ser maior que zero'}), 400
     
-    valor_restante = crediario.valor_total - crediario.valor_pago
     if valor_pago > valor_restante:
         return jsonify({'success': False, 'error': 'Valor de pagamento não pode ser maior que o valor restante'}), 400
     
@@ -400,13 +413,23 @@ def get_crediarios_cliente(cliente_id):
     crediarios = Crediario.query.filter_by(cliente_id=cliente_id).order_by(Crediario.data_vencimento.asc()).all()
     return jsonify([{
         'id': c.id,
+        'venda_id': c.venda_id,
         'valor_total': c.valor_total,
         'valor_pago': c.valor_pago,
         'valor_restante': c.valor_total - c.valor_pago,
         'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
         'status': c.status,
         'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
-        'observacoes': c.observacoes
+        'observacoes': c.observacoes,
+        'tem_devolucao': DevolucaoCrediario.query.filter_by(crediario_id=c.id).first() is not None,
+        'produtos': [
+            {
+                'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
+                'quantidade': item.quantidade,
+                'valor_unitario': item.valor_unitario
+            }
+            for item in c.venda.produtos_vendidos
+        ] if c.venda else []
     } for c in crediarios])
 
 @app.route('/api/crediarios/<int:id>')
@@ -424,7 +447,15 @@ def get_crediario_detalhado(id):
         'status': crediario.status,
         'data_criacao': crediario.data_criacao.strftime('%d/%m/%Y'),
         'observacoes': crediario.observacoes,
-        'dias_vencimento': (crediario.data_vencimento - date.today()).days
+        'dias_vencimento': (crediario.data_vencimento - date.today()).days,
+        'produtos': [
+            {
+                'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
+                'quantidade': item.quantidade,
+                'valor_unitario': item.valor_unitario
+            }
+            for item in crediario.venda.produtos_vendidos
+        ] if crediario.venda else []
     })
 
 @app.route('/api/crediarios/<int:id>/pagamentos')
@@ -438,6 +469,113 @@ def get_pagamentos_crediario(id):
         'data_pagamento': p.data_pagamento.strftime('%d/%m/%Y %H:%M'),
         'observacoes': p.observacoes
     } for p in pagamentos])
+
+@app.route('/api/crediarios/<int:id>/devolver', methods=['POST'])
+def devolver_crediario(id):
+    crediario = Crediario.query.get_or_404(id)
+    data = request.json
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    valor_devolvido = data['valor_devolvido']
+    
+    # Validar se o valor devolvido não excede o valor restante
+    valor_restante = crediario.valor_total - crediario.valor_pago
+    if valor_devolvido > valor_restante:
+        return jsonify({'success': False, 'error': 'Valor da devolução não pode ser maior que o valor restante'}), 400
+    
+    # Registrar a devolução
+    devolucao = DevolucaoCrediario(
+        crediario_id=id,
+        produtos_devolvidos=data.get('produtos_devolvidos', ''),
+        valor_devolvido=valor_devolvido,
+        observacoes=data.get('observacoes', '')
+    )
+    db.session.add(devolucao)
+    
+    # Decrementar o valor total do crediário pelo valor devolvido
+    crediario.valor_total -= valor_devolvido
+    
+    # Se o valor total ficar negativo, zerar
+    if crediario.valor_total < 0:
+        crediario.valor_total = 0
+    
+    # Atualizar status baseado no novo valor total
+    if crediario.valor_pago >= crediario.valor_total:
+        crediario.status = 'Pago'
+    elif crediario.data_vencimento < date.today():
+        crediario.status = 'Atrasado'
+    else:
+        crediario.status = 'Pendente'
+    
+    # Adicionar observação sobre a devolução
+    if crediario.observacoes:
+        crediario.observacoes += f"\n--- Devolução em {datetime.now().strftime('%d/%m/%Y %H:%M')} ---\n{data.get('observacoes', '')}"
+    else:
+        crediario.observacoes = f"Devolução em {datetime.now().strftime('%d/%m/%Y %H:%M')}: {data.get('observacoes', '')}"
+    
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'valor_restante': crediario.valor_total - crediario.valor_pago,
+        'status': crediario.status,
+        'devolucao_id': devolucao.id
+    })
+
+@app.route('/api/crediarios/<int:id>/devolucoes')
+def get_devolucoes_crediario(id):
+    devolucoes = DevolucaoCrediario.query.filter_by(crediario_id=id).order_by(DevolucaoCrediario.data_devolucao.desc()).all()
+    
+    return jsonify([{
+        'id': d.id,
+        'valor_devolvido': d.valor_devolvido,
+        'data_devolucao': d.data_devolucao.strftime('%d/%m/%Y %H:%M'),
+        'produtos_devolvidos': d.produtos_devolvidos,
+        'observacoes': d.observacoes
+    } for d in devolucoes])
+
+@app.route('/api/crediarios/cliente/<int:cliente_id>/devolucoes')
+def get_devolucoes_cliente(cliente_id):
+    crediarios = Crediario.query.filter_by(cliente_id=cliente_id).all()
+    devolucoes = []
+    
+    for crediario in crediarios:
+        devolucoes_crediario = DevolucaoCrediario.query.filter_by(crediario_id=crediario.id).all()
+        for devolucao in devolucoes_crediario:
+            devolucoes.append({
+                'id': devolucao.id,
+                'crediario_id': crediario.id,
+                'valor_devolvido': devolucao.valor_devolvido,
+                'data_devolucao': devolucao.data_devolucao.strftime('%d/%m/%Y %H:%M'),
+                'produtos_devolvidos': devolucao.produtos_devolvidos,
+                'observacoes': devolucao.observacoes
+            })
+    
+    return jsonify(devolucoes)
+
+@app.route('/api/crediarios/<int:id>/produtos-disponiveis-devolucao')
+def get_produtos_disponiveis_devolucao(id):
+    crediario = Crediario.query.get_or_404(id)
+    
+    # Verificar se já existe devolução
+    devolucao_existente = DevolucaoCrediario.query.filter_by(crediario_id=id).first()
+    if devolucao_existente:
+        return jsonify([])  # Não há produtos disponíveis se já foi devolvido
+    
+    # Retornar produtos da venda
+    produtos = []
+    if crediario.venda and crediario.venda.produtos_vendidos:
+        for item in crediario.venda.produtos_vendidos:
+            produtos.append({
+                'id': item.produto_id,
+                'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
+                'quantidade': item.quantidade,
+                'valor_unitario': item.valor_unitario
+            })
+    
+    return jsonify(produtos)
 
 # API para vendas
 @app.route('/api/vendas', methods=['POST'])
@@ -513,6 +651,21 @@ def get_vendas():
             'parcelas': p.parcelas
         } for p in v.pagamentos]
     } for v in vendas])
+
+@app.route('/api/vendas/produtos/<int:venda_id>')
+def get_produtos_venda(venda_id):
+    venda = Venda.query.get_or_404(venda_id)
+    produtos = []
+    
+    for item in venda.produtos_vendidos:
+        produtos.append({
+            'id': item.produto_id,
+            'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
+            'quantidade': item.quantidade,
+            'valor_unitario': item.valor_unitario
+        })
+    
+    return jsonify(produtos)
 
 # Relatório Excel
 @app.route('/api/relatorio/<data>')
@@ -726,11 +879,26 @@ def calcular_caixa_diario(data_caixa=None):
         db.session.add(caixa)
         db.session.commit()
     
-    # Calcular entradas (vendas)
+    # IDs de vendas que são crediário (garantir set para robustez)
+    vendas_crediario_ids = set(c.venda_id for c in Crediario.query.all())
+    # Vendas do dia
     vendas_do_dia = Venda.query.filter(
         db.func.date(Venda.data_venda) == data_caixa
     ).all()
-    total_vendas = sum(venda.valor_total for venda in vendas_do_dia)
+    vendas_do_dia_ids = [v.id for v in vendas_do_dia]
+    vendas_simples_ids = [v.id for v in vendas_do_dia if v.id not in vendas_crediario_ids]
+    vendas_crediario_do_dia_ids = [v.id for v in vendas_do_dia if v.id in vendas_crediario_ids]
+    print(f"[CAIXA] Data: {data_caixa}")
+    print(f"[CAIXA] Vendas do dia: {vendas_do_dia_ids}")
+    print(f"[CAIXA] Vendas com crediário: {list(vendas_crediario_ids)}")
+    print(f"[CAIXA] Vendas simples (entram no caixa): {vendas_simples_ids}")
+    print(f"[CAIXA] Vendas crediário (NÃO entram no caixa): {vendas_crediario_do_dia_ids}")
+    # Somar apenas vendas que NÃO estão no set de crediário
+    total_vendas_simples = sum(venda.valor_total for venda in vendas_do_dia if venda.id not in vendas_crediario_ids)
+    
+    # Pagamentos de crediário recebidos no dia
+    pagamentos_crediario = PagamentoCrediario.query.filter(db.func.date(PagamentoCrediario.data_pagamento) == data_caixa).all()
+    total_pagamentos_crediario = sum(p.valor_pago for p in pagamentos_crediario)
     
     # Calcular saídas (devoluções, premiações, compras)
     devolucoes_do_dia = Devolucao.query.filter(
@@ -749,13 +917,15 @@ def calcular_caixa_diario(data_caixa=None):
     total_compras = sum(compra.valor for compra in compras_do_dia)
     
     # Calcular saldo final
-    saldo_final = caixa.valor_inicial + total_vendas - total_devolucoes - total_premiacoes - total_compras
+    saldo_final = caixa.valor_inicial + total_vendas_simples + total_pagamentos_crediario - total_devolucoes - total_premiacoes - total_compras
     caixa.valor_final = saldo_final
     db.session.commit()
     
     return {
         'valor_inicial': caixa.valor_inicial,
-        'total_vendas': total_vendas,
+        'total_vendas': total_vendas_simples + total_pagamentos_crediario,
+        'total_vendas_simples': total_vendas_simples,
+        'total_pagamentos_crediario': total_pagamentos_crediario,
         'total_devolucoes': total_devolucoes,
         'total_premiacoes': total_premiacoes,
         'total_compras': total_compras,

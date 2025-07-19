@@ -129,7 +129,7 @@
             <div class="modal-header bg-info text-white">
                 <h5 class="modal-title" id="modalHistoricoLabel">
                     <i class="fas fa-history me-2"></i>
-                    Histórico de Pagamentos
+                    Histórico de Transações
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -142,9 +142,14 @@
                     <p><strong>Valor Restante:</strong> <span id="historico-valor-restante" class="text-warning"></span></p>
                     <p><strong>Status:</strong> <span id="historico-status"></span></p>
                 </div>
-                
                 <div class="mb-3">
-                    <h6>Histórico de Pagamentos:</h6>
+                    <h6>Produtos Comprados:</h6>
+                    <div id="produtos-comprados">
+                        <p class="text-muted text-center">Carregando produtos...</p>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <h6>Histórico de Pagamentos e Devoluções:</h6>
                     <div id="lista-pagamentos">
                         <p class="text-muted text-center">Carregando histórico...</p>
                     </div>
@@ -154,6 +159,70 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times me-2"></i>
                     Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Devolução -->
+<div class="modal fade" id="modalDevolucao" tabindex="-1" aria-labelledby="modalDevolucaoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title" id="modalDevolucaoLabel">
+                    <i class="fas fa-undo me-2"></i>
+                    Registrar Devolução
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6>Informações do Crediário:</h6>
+                    <p><strong>Atacadista:</strong> <span id="devolucao-atacadista-nome"></span></p>
+                    <p><strong>Valor Total:</strong> <span id="devolucao-valor-total" class="text-primary"></span></p>
+                    <p><strong>Valor Pago:</strong> <span id="devolucao-valor-pago" class="text-success"></span></p>
+                    <p><strong>Valor Restante:</strong> <span id="devolucao-valor-restante" class="text-warning"></span></p>
+                    <p><strong>Status:</strong> <span id="devolucao-status"></span></p>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Produtos da Venda:</label>
+                    <div id="produtos-venda-devolucao">
+                        <p class="text-muted text-center">Carregando produtos...</p>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Produtos Selecionados para Devolução:</label>
+                    <div id="produtos-selecionados-devolucao">
+                        <p class="text-muted text-center">Nenhum produto selecionado</p>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Observações (opcional):</label>
+                    <textarea class="form-control" id="observacoes-devolucao" rows="3" placeholder="Observações sobre a devolução..."></textarea>
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Importante:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Se o crediário estiver <strong>pendente</strong>, o valor será zerado</li>
+                        <li>Se o crediário estiver <strong>pago</strong>, o valor será subtraído do caixa diário</li>
+                        <li>Após a devolução, o crediário não poderá mais ser pago</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-warning" onclick="realizarDevolucao()">
+                    <i class="fas fa-undo me-2"></i>
+                    Confirmar Devolução
                 </button>
             </div>
         </div>
@@ -177,11 +246,23 @@ $(document).ready(function() {
     const atacadistaId = urlParams.get('atacadista');
     
     if (atacadistaId) {
-        console.log('Atacadista pré-selecionado:', atacadistaId);
+        console.log('Atacadista pré-selecionado via URL:', atacadistaId);
         // Aguardar carregamento dos atacadistas e então selecionar
         setTimeout(function() {
             selecionarAtacadistaPorId(parseInt(atacadistaId));
         }, 500);
+    } else {
+        // Verificar se há atacadista no localStorage (vindo da página de clientes)
+        const atacadistaLocalStorage = localStorage.getItem('atacadistaSelecionado');
+        if (atacadistaLocalStorage) {
+            console.log('Atacadista pré-selecionado via localStorage:', atacadistaLocalStorage);
+            // Aguardar carregamento dos atacadistas e então selecionar
+            setTimeout(function() {
+                selecionarAtacadistaPorId(parseInt(atacadistaLocalStorage));
+                // Limpar o localStorage após usar
+                localStorage.removeItem('atacadistaSelecionado');
+            }, 500);
+        }
     }
     
     // Busca automática de atacadistas
@@ -335,14 +416,18 @@ function carregarCrediariosAtacadista(clienteId) {
                             </div>
                             <small class="text-muted">Vencimento: ${crediario.data_vencimento}</small><br>
                             <small class="text-muted">Criado em: ${crediario.data_criacao}</small>
+                            ${crediario.valor_total === 0 && crediario.tem_devolucao ? '<br><small class="text-danger"><i class="fas fa-undo me-1"></i>Completamente Devolvido</small>' : ''}
                         </div>
                         <div class="ms-3">
                             <button type="button" class="btn btn-sm btn-info me-1" onclick="verHistoricoPagamentos(${crediario.id})">
                                 <i class="fas fa-history me-1"></i>Histórico
                             </button>
-                            ${crediario.status !== 'Pago' ? `
-                                <button type="button" class="btn btn-sm btn-success" onclick="abrirModalPagamento(${crediario.id})">
+                            ${crediario.valor_restante > 0 ? `
+                                <button type="button" class="btn btn-sm btn-success me-1" onclick="abrirModalPagamento(${crediario.id})">
                                     <i class="fas fa-money-bill-wave me-1"></i>Pagar
+                                </button>
+                                <button type="button" class="btn btn-sm btn-warning" onclick="abrirModalDevolucao(${crediario.id})">
+                                    <i class="fas fa-undo me-1"></i>Devolver
                                 </button>
                             ` : ''}
                         </div>
@@ -524,38 +609,271 @@ function verHistoricoPagamentos(crediarioId) {
         $('#historico-valor-restante').text('R$ ' + crediario.valor_restante.toFixed(2).replace('.', ','));
         $('#historico-status').text(crediario.status);
         
-        // Buscar histórico de pagamentos
-        $.get(`/api/crediarios/${crediarioId}/pagamentos`, function(pagamentos) {
-            const container = $('#lista-pagamentos');
+        // Produtos comprados
+        const produtosContainer = $('#produtos-comprados');
+        if (crediario.produtos && crediario.produtos.length > 0) {
+            let html = '<div class="table-responsive"><table class="table table-sm">';
+            html += '<thead><tr><th>Produto</th><th>Qtd</th><th>Valor Unit.</th><th>Total</th></tr></thead><tbody>';
+            crediario.produtos.forEach(function(produto) {
+                const total = produto.quantidade * produto.valor_unitario;
+                html += `
+                    <tr>
+                        <td>${produto.nome}</td>
+                        <td>${produto.quantidade}</td>
+                        <td>R$ ${produto.valor_unitario.toFixed(2).replace('.', ',')}</td>
+                        <td>R$ ${total.toFixed(2).replace('.', ',')}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table></div>';
+            produtosContainer.html(html);
+        } else {
+            produtosContainer.html('<p class="text-muted text-center">Nenhum produto registrado</p>');
+        }
+        
+        // Carregar histórico de pagamentos e devoluções
+        Promise.all([
+            $.get(`/api/crediarios/${crediarioId}/pagamentos`),
+            $.get(`/api/crediarios/${crediarioId}/devolucoes`)
+        ]).then(function([pagamentos, devolucoes]) {
+            const historicoContainer = $('#lista-pagamentos');
             
-            if (pagamentos.length === 0) {
-                container.html('<p class="text-muted text-center">Nenhum pagamento registrado</p>');
-            } else {
-                let html = '<div class="table-responsive"><table class="table table-striped">';
-                html += '<thead><tr><th>Data</th><th>Valor</th><th>Observações</th></tr></thead><tbody>';
-                
-                pagamentos.forEach(function(pagamento) {
-                    html += `
-                        <tr>
-                            <td>${pagamento.data_pagamento}</td>
-                            <td class="text-success">R$ ${pagamento.valor_pago.toFixed(2).replace('.', ',')}</td>
-                            <td>${pagamento.observacoes || '-'}</td>
-                        </tr>
-                    `;
+            // Combinar pagamentos e devoluções
+            const todasTransacoes = [];
+            
+            // Adicionar pagamentos
+            pagamentos.forEach(function(pagamento) {
+                todasTransacoes.push({
+                    tipo: 'pagamento',
+                    data: pagamento.data_pagamento,
+                    valor: pagamento.valor_pago,
+                    observacoes: pagamento.observacoes,
+                    timestamp: new Date(pagamento.data_pagamento.split(' ')[0].split('/').reverse().join('-') + ' ' + pagamento.data_pagamento.split(' ')[1])
                 });
-                
-                html += '</tbody></table></div>';
-                container.html(html);
+            });
+            
+            // Adicionar devoluções
+            devolucoes.forEach(function(devolucao) {
+                todasTransacoes.push({
+                    tipo: 'devolucao',
+                    data: devolucao.data_devolucao,
+                    valor: devolucao.valor_devolvido,
+                    observacoes: devolucao.observacoes,
+                    produtos_devolvidos: devolucao.produtos_devolvidos,
+                    timestamp: new Date(devolucao.data_devolucao.split(' ')[0].split('/').reverse().join('-') + ' ' + devolucao.data_devolucao.split(' ')[1])
+                });
+            });
+            
+            // Ordenar por data (mais recente primeiro)
+            todasTransacoes.sort((a, b) => b.timestamp - a.timestamp);
+            
+            if (todasTransacoes.length === 0) {
+                historicoContainer.html('<p class="text-muted text-center">Nenhuma transação registrada</p>');
+                return;
             }
             
-            $('#modalHistorico').modal('show');
-        }).fail(function(xhr, status, error) {
+            let html = '<div class="list-group">';
+            todasTransacoes.forEach(function(transacao) {
+                const isPagamento = transacao.tipo === 'pagamento';
+                const bgClass = isPagamento ? 'list-group-item-success' : 'list-group-item-warning';
+                const icon = isPagamento ? 'fas fa-money-bill-wave' : 'fas fa-undo';
+                const textClass = isPagamento ? 'text-success' : 'text-warning';
+                const prefix = isPagamento ? '+' : '-';
+                
+                html += `
+                    <div class="list-group-item ${bgClass}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center">
+                                    <i class="${icon} me-2"></i>
+                                    <strong>${isPagamento ? 'Pagamento' : 'Devolução'}</strong>
+                                    <span class="badge bg-${isPagamento ? 'success' : 'warning'} ms-2">${transacao.data}</span>
+                                </div>
+                                <div class="mt-1">
+                                    <span class="${textClass} fw-bold">${prefix} R$ ${transacao.valor.toFixed(2).replace('.', ',')}</span>
+                                </div>
+                                ${transacao.observacoes ? `<small class="text-muted">${transacao.observacoes}</small>` : ''}
+                                ${transacao.produtos_devolvidos ? `
+                                    <div class="mt-2">
+                                        <small class="text-muted"><strong>Produtos devolvidos:</strong></small><br>
+                                        <small class="text-muted">${formatarProdutosDevolvidos(transacao.produtos_devolvidos)}</small>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            historicoContainer.html(html);
+        }).catch(function(error) {
             console.error('Erro ao carregar histórico:', error);
-            $('#lista-pagamentos').html('<p class="text-danger">Erro ao carregar histórico de pagamentos</p>');
+            $('#lista-pagamentos').html('<p class="text-danger">Erro ao carregar histórico de transações</p>');
         });
+        
+        $('#modalHistorico').modal('show');
     }).fail(function(xhr, status, error) {
         console.error('Erro ao carregar crediário:', error);
         alert('Erro ao carregar informações do crediário');
+    });
+}
+
+function abrirModalDevolucao(crediarioId) {
+    crediarioSelecionado = crediariosAtacadista.find(c => c.id === crediarioId);
+    if (!crediarioSelecionado) {
+        alert('Crediário não encontrado!');
+        return;
+    }
+
+    $('#devolucao-atacadista-nome').text(atacadistaSelecionado.nome);
+    $('#devolucao-valor-total').text('R$ ' + crediarioSelecionado.valor_total.toFixed(2).replace('.', ','));
+    $('#devolucao-valor-pago').text('R$ ' + crediarioSelecionado.valor_pago.toFixed(2).replace('.', ','));
+    $('#devolucao-valor-restante').text('R$ ' + crediarioSelecionado.valor_restante.toFixed(2).replace('.', ','));
+    $('#devolucao-status').text(crediarioSelecionado.status);
+
+    // Carregar produtos da venda
+    $.get(`/api/vendas/produtos/${crediarioSelecionado.venda_id}`, function(produtos) {
+        const produtosVendaContainer = $('#produtos-venda-devolucao');
+        produtosVendaContainer.empty();
+        if (produtos && produtos.length > 0) {
+            let html = '<div class="list-group">';
+            produtos.forEach(function(prod) {
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center" 
+                         data-produto-id="${prod.id}" 
+                         data-produto='${JSON.stringify(prod)}'>
+                        <div>
+                            <strong>${prod.nome}</strong><br>
+                            <small class="text-muted">Qtd: ${prod.quantidade}, Valor: R$ ${prod.valor_unitario.toFixed(2).replace('.', ',')}</small>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="adicionarProdutoDevolucao(${prod.id})">
+                                <i class="fas fa-plus-circle"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            produtosVendaContainer.html(html);
+        } else {
+            produtosVendaContainer.html('<p class="text-muted text-center">Nenhum produto registrado para esta venda.</p>');
+        }
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar produtos da venda:', error);
+        $('#produtos-venda-devolucao').html('<p class="text-danger">Erro ao carregar produtos da venda.</p>');
+    });
+
+    // Limpar produtos selecionados para devolução
+    $('#produtos-selecionados-devolucao').empty();
+    $('#produtos-selecionados-devolucao').html('<p class="text-muted text-center">Nenhum produto selecionado</p>');
+
+    $('#observacoes-devolucao').val(''); // Limpar observações
+
+    $('#modalDevolucao').modal('show');
+}
+
+function adicionarProdutoDevolucao(produtoId) {
+    const produtoElement = $(`#produtos-venda-devolucao .list-group-item[data-produto-id="${produtoId}"]`);
+    const produto = JSON.parse(produtoElement.attr('data-produto'));
+    
+    if (produto) {
+        const produtoSelecionado = $('#produtos-selecionados-devolucao').find(`.list-group-item[data-produto-id="${produtoId}"]`);
+        if (produtoSelecionado.length === 0) {
+            const itemHtml = `
+                <div class="list-group-item d-flex justify-content-between align-items-center" data-produto-id="${produtoId}">
+                    <div>
+                        <strong>${produto.nome}</strong><br>
+                        <small class="text-muted">Qtd: ${produto.quantidade}, Valor: R$ ${produto.valor_unitario.toFixed(2).replace('.', ',')}</small>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removerProdutoDevolucao(${produtoId})">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            $('#produtos-selecionados-devolucao').append(itemHtml);
+        } else {
+            alert('Este produto já foi selecionado para devolução.');
+        }
+    }
+}
+
+function removerProdutoDevolucao(produtoId) {
+    $('#produtos-selecionados-devolucao').find(`.list-group-item[data-produto-id="${produtoId}"]`).remove();
+    if ($('#produtos-selecionados-devolucao').find('.list-group-item').length === 0) {
+        $('#produtos-selecionados-devolucao').html('<p class="text-muted text-center">Nenhum produto selecionado</p>');
+    }
+}
+
+function realizarDevolucao() {
+    const produtosSelecionados = $('#produtos-selecionados-devolucao').find('.list-group-item');
+    const produtosParaDevolucao = [];
+    let valorDevolucao = 0;
+
+    produtosSelecionados.each(function() {
+        const produtoId = $(this).data('produto-id');
+        const produtoElement = $(`#produtos-venda-devolucao .list-group-item[data-produto-id="${produtoId}"]`);
+        const produto = JSON.parse(produtoElement.attr('data-produto'));
+        
+        if (produto) {
+            produtosParaDevolucao.push({
+                id: produtoId,
+                nome: produto.nome,
+                quantidade: produto.quantidade,
+                valor_unitario: produto.valor_unitario
+            });
+            valorDevolucao += produto.valor_unitario * produto.quantidade;
+        }
+    });
+
+    if (produtosParaDevolucao.length === 0) {
+        alert('Selecione pelo menos um produto para devolução!');
+        return;
+    }
+
+    const observacoesDevolucao = $('#observacoes-devolucao').val();
+
+    const dadosDevolucao = {
+        valor_devolvido: valorDevolucao,
+        produtos_devolvidos: JSON.stringify(produtosParaDevolucao),
+        observacoes: observacoesDevolucao
+    };
+
+    // Mostrar loading
+    $('#modalDevolucao .btn-warning').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Processando...');
+
+    $.ajax({
+        url: `/api/crediarios/${crediarioSelecionado.id}/devolver`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dadosDevolucao),
+        success: function(response) {
+            console.log('Devolução realizada:', response);
+            
+            // Fechar modal
+            $('#modalDevolucao').modal('hide');
+            
+            // Mostrar mensagem de sucesso
+            mostrarMensagemSucesso('Devolução realizada com sucesso!');
+            
+            // Recarregar crediários e resumo automaticamente
+            if (atacadistaSelecionado) {
+                carregarCrediariosAtacadista(atacadistaSelecionado.id);
+            }
+            
+            // Resetar botão
+            $('#modalDevolucao .btn-warning').prop('disabled', false).html('<i class="fas fa-undo me-2"></i>Confirmar Devolução');
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro ao realizar devolução:', error);
+            alert('Erro ao realizar devolução: ' + error);
+            
+            // Resetar botão
+            $('#modalDevolucao .btn-warning').prop('disabled', false).html('<i class="fas fa-undo me-2"></i>Confirmar Devolução');
+        }
     });
 }
 
@@ -595,6 +913,19 @@ function atualizarResumoManual() {
         console.log('Atualização manual do resumo financeiro...');
         carregarCrediariosAtacadista(atacadistaSelecionado.id);
         mostrarMensagemSucesso('Resumo atualizado com sucesso!');
+    }
+}
+
+function formatarProdutosDevolvidos(produtosJson) {
+    try {
+        const produtos = JSON.parse(produtosJson);
+        if (produtos && produtos.length > 0) {
+            return produtos.map(p => `${p.nome} (Qtd: ${p.quantidade}, Valor: R$ ${p.valor_unitario.toFixed(2).replace('.', ',')})`).join(', ');
+        }
+        return 'Nenhum produto devolvido';
+    } catch (e) {
+        console.error('Erro ao formatar produtos devolvidos:', e);
+        return 'Produtos inválidos';
     }
 }
 </script>

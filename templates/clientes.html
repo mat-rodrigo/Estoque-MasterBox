@@ -291,6 +291,11 @@ function renderizarClientes() {
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="editarCliente(${cliente.id})">
                         <i class="fas fa-edit"></i>
                     </button>
+                    ${cliente.tipo === 'Atacadista' ? `
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="gerenciarPagamentos(${cliente.id}, '${cliente.nome}')" title="Gerenciar Pagamentos">
+                            <i class="fas fa-credit-card"></i>
+                        </button>
+                    ` : ''}
                     <button type="button" class="btn btn-sm btn-outline-danger" onclick="excluirCliente(${cliente.id}, '${cliente.nome}')">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -392,6 +397,16 @@ function confirmarExclusao() {
             alert('Erro ao excluir cliente: ' + error);
         }
     });
+}
+
+function gerenciarPagamentos(clienteId, nomeCliente) {
+    console.log(`Redirecionando para pagamentos do atacadista: ${nomeCliente} (ID: ${clienteId})`);
+    
+    // Armazenar o ID do cliente selecionado no localStorage para pré-seleção
+    localStorage.setItem('atacadistaSelecionado', clienteId);
+    
+    // Redirecionar para a página de pagamentos
+    window.location.href = '/pagamentos-crediarios';
 }
 </script>
 

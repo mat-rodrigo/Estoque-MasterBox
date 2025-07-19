@@ -66,13 +66,73 @@
                     <div class="col-6 mb-3">
                         <div class="text-center">
                             <h4 id="faturamento-total" class="text-warning">R$ 0,00</h4>
-                            <small class="text-muted">Faturamento Total</small>
+                            <small class="text-muted">Faturamento Mensal</small>
                         </div>
                     </div>
                     <div class="col-6 mb-3">
                         <div class="text-center">
                             <h4 id="produtos-baixo-estoque" class="text-danger">0</h4>
                             <small class="text-muted">Baixo Estoque</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0 text-center">
+                    <i class="fas fa-credit-card me-2"></i>
+                    Resumo por Método de Pagamentos
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row justify-content-center">
+                    <div class="col-lg-2 col-md-4 col-6 mb-3">
+                        <div class="text-center">
+                            <div class="text-success mb-2">
+                                <i class="fas fa-money-bill-wave fa-2x"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Espécie</h6>
+                            <h5 id="total-especie" class="text-success mb-0">R$ 0,00</h5>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6 mb-3">
+                        <div class="text-center">
+                            <div class="text-primary mb-2">
+                                <i class="fas fa-qrcode fa-2x"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Pix</h6>
+                            <h5 id="total-pix" class="text-primary mb-0">R$ 0,00</h5>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6 mb-3">
+                        <div class="text-center">
+                            <div class="text-info mb-2">
+                                <i class="fas fa-credit-card fa-2x"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Débito</h6>
+                            <h5 id="total-debito" class="text-info mb-0">R$ 0,00</h5>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6 mb-3">
+                        <div class="text-center">
+                            <div class="text-warning mb-2">
+                                <i class="fas fa-credit-card fa-2x"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Crédito</h6>
+                            <h5 id="total-credito" class="text-warning mb-0">R$ 0,00</h5>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-4 col-6 mb-3">
+                        <div class="text-center">
+                            <div class="text-danger mb-2">
+                                <i class="fas fa-handshake fa-2x"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Crediário</h6>
+                            <h5 id="total-crediario" class="text-danger mb-0">R$ 0,00</h5>
                         </div>
                     </div>
                 </div>
@@ -137,7 +197,6 @@ $(document).ready(function() {
 function carregarEstatisticas() {
     $.get('/api/produtos', function(produtos) {
         $('#total-produtos').text(produtos.length);
-        
         let baixoEstoque = 0;
         produtos.forEach(function(produto) {
             if (produto.quantidade <= 5) {
@@ -150,8 +209,57 @@ function carregarEstatisticas() {
     $.get('/api/vendas', function(vendas) {
         $('#total-vendas').text(vendas.length);
         
-        const faturamento = vendas.reduce((total, venda) => total + venda.valor_total, 0);
+        // Filtrar vendas do mês atual
+        const hoje = new Date();
+        const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+        const vendasDoMes = vendas.filter(venda => {
+            const dataVenda = new Date(venda.data_venda.split(' ')[0].split('/').reverse().join('-'));
+            return dataVenda >= primeiroDiaMes;
+        });
+        
+        const faturamento = vendasDoMes.reduce((total, venda) => total + venda.valor_total, 0);
         $('#faturamento-total').text('R$ ' + faturamento.toFixed(2).replace('.', ','));
+        
+        // Calcular totais por método de pagamento (apenas do mês atual)
+        let totalEspecie = 0, totalPix = 0, totalDebito = 0, totalCredito = 0, totalCrediario = 0;
+        vendasDoMes.forEach(function(venda) {
+            if (venda.pagamentos && venda.pagamentos.length > 0) {
+                venda.pagamentos.forEach(function(p) {
+                    const tipo = (p.tipo_pagamento || '').toLowerCase();
+                    if (tipo.includes('esp') || tipo.includes('dinheiro')) {
+                        totalEspecie += p.valor;
+                    } else if (tipo.includes('pix')) {
+                        totalPix += p.valor;
+                    } else if (tipo.includes('débito') || tipo.includes('debito')) {
+                        totalDebito += p.valor;
+                    } else if (tipo.includes('crédito') || tipo.includes('credito')) {
+                        totalCredito += p.valor;
+                    } else if (tipo.includes('crediario')) {
+                        totalCrediario += p.valor;
+                    }
+                });
+            }
+        });
+        
+        // Buscar pagamentos de crediário do mês atual para somar ao total
+        $.get('/api/crediarios', function(crediarios) {
+            let totalPagamentosCrediario = 0;
+            crediarios.forEach(function(crediario) {
+                // Filtrar apenas pagamentos do mês atual
+                const pagamentosDoMes = crediario.pagamentos ? crediario.pagamentos.filter(p => {
+                    const dataPagamento = new Date(p.data_pagamento.split(' ')[0].split('/').reverse().join('-'));
+                    return dataPagamento >= primeiroDiaMes;
+                }) : [];
+                totalPagamentosCrediario += pagamentosDoMes.reduce((total, p) => total + p.valor_pago, 0);
+            });
+            totalCrediario += totalPagamentosCrediario;
+            
+            $('#total-especie').text('R$ ' + totalEspecie.toFixed(2).replace('.', ','));
+            $('#total-pix').text('R$ ' + totalPix.toFixed(2).replace('.', ','));
+            $('#total-debito').text('R$ ' + totalDebito.toFixed(2).replace('.', ','));
+            $('#total-credito').text('R$ ' + totalCredito.toFixed(2).replace('.', ','));
+            $('#total-crediario').text('R$ ' + totalCrediario.toFixed(2).replace('.', ','));
+        });
     });
 }
 
