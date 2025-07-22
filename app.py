@@ -17,7 +17,8 @@ class Produto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(200), nullable=False)
     quantidade = db.Column(db.Integer, default=0)
-    valor_custo = db.Column(db.Float, default=0.0)
+    valor_varejo = db.Column(db.Float, default=0.0)  # Novo campo para preço de venda simples
+    valor_atacado = db.Column(db.Float, default=0.0) # Novo campo para preço de atacadista
     compatibilidade = db.Column(db.Text)
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -187,7 +188,8 @@ def get_produtos():
         'id': p.id,
         'nome': p.nome,
         'quantidade': p.quantidade,
-        'valor_custo': p.valor_custo,
+        'valor_varejo': p.valor_varejo,  # Novo campo
+        'valor_atacado': p.valor_atacado,  # Novo campo
         'compatibilidade': p.compatibilidade
     } for p in produtos])
 
@@ -200,7 +202,8 @@ def adicionar_produto():
     produto = Produto(
         nome=data['nome'],
         quantidade=data['quantidade'],
-        valor_custo=data['valor_custo'],
+        valor_varejo=data.get('valor_varejo', 0.0),  # Novo campo
+        valor_atacado=data.get('valor_atacado', 0.0),  # Novo campo
         compatibilidade=data['compatibilidade']
     )
     db.session.add(produto)
@@ -216,7 +219,8 @@ def atualizar_produto(id):
     
     produto.nome = data['nome']
     produto.quantidade = data['quantidade']
-    produto.valor_custo = data['valor_custo']
+    produto.valor_varejo = data.get('valor_varejo', produto.valor_varejo)  # Novo campo
+    produto.valor_atacado = data.get('valor_atacado', produto.valor_atacado)  # Novo campo
     produto.compatibilidade = data['compatibilidade']
     db.session.commit()
     return jsonify({'success': True})
@@ -227,6 +231,17 @@ def deletar_produto(id):
     db.session.delete(produto)
     db.session.commit()
     return jsonify({'success': True})
+
+@app.route('/api/produtos/busca')
+def buscar_produtos():
+    termo = request.args.get('q', '').strip()
+    if not termo:
+        return jsonify([])
+    produtos = Produto.query.filter(Produto.nome.ilike(f'%{termo}%')).all()
+    return jsonify([
+        {'id': p.id, 'nome': p.nome, 'quantidade': p.quantidade, 'valor_varejo': p.valor_varejo, 'valor_atacado': p.valor_atacado}
+        for p in produtos
+    ])
 
 # API para clientes
 @app.route('/api/clientes', methods=['GET'])
@@ -485,7 +500,7 @@ def devolver_crediario(id):
     if valor_devolvido > valor_restante:
         return jsonify({'success': False, 'error': 'Valor da devolução não pode ser maior que o valor restante'}), 400
     
-    # Registrar a devolução
+    # Registrar a devolução de crediário
     devolucao = DevolucaoCrediario(
         crediario_id=id,
         produtos_devolvidos=data.get('produtos_devolvidos', ''),
@@ -493,6 +508,14 @@ def devolver_crediario(id):
         observacoes=data.get('observacoes', '')
     )
     db.session.add(devolucao)
+    
+    # Também registrar no histórico geral de devoluções (saídas)
+    devolucao_saida = Devolucao(
+        valor=valor_devolvido,
+        produtos_devolvidos=data.get('produtos_devolvidos', ''),
+        observacoes=f"[DEVOLUÇÃO ATACADISTA - Crediário ID {id}] " + data.get('observacoes', '')
+    )
+    db.session.add(devolucao_saida)
     
     # Decrementar o valor total do crediário pelo valor devolvido
     crediario.valor_total -= valor_devolvido
@@ -584,6 +607,8 @@ def registrar_venda():
     if not data:
         return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
     
+    tipo_venda = data.get('tipo_venda', 'simples')  # Novo campo para identificar o tipo de venda
+    
     # Validar se a soma dos pagamentos é igual ao valor total
     valor_total_pagamentos = sum(pagamento['valor'] for pagamento in data.get('pagamentos', []))
     if abs(valor_total_pagamentos - data['valor_total']) > 0.01:  # Tolerância para diferenças de ponto flutuante
@@ -612,12 +637,17 @@ def registrar_venda():
     for item_data in data['itens']:
         produto = Produto.query.get(item_data['produto_id'])
         if produto and produto.quantidade >= item_data['quantidade']:
+            # Definir preço conforme o tipo de venda
+            if tipo_venda == 'atacadista':
+                valor_unitario = produto.valor_atacado
+            else:
+                valor_unitario = produto.valor_varejo
             # Criar item da venda
             item_venda = ItemVenda(
                 venda_id=venda.id,
                 produto_id=produto.id,
                 quantidade=item_data['quantidade'],
-                valor_unitario=produto.valor_custo,
+                valor_unitario=valor_unitario,
                 nome_produto=produto.nome  # Salvar o nome do produto no momento da venda
             )
             db.session.add(item_venda)

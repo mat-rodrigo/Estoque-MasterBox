@@ -32,8 +32,12 @@
                         <input type="number" class="form-control" id="quantidade" name="quantidade" min="0" required>
                     </div>
                     <div class="mb-3">
-                        <label for="valor_custo" class="form-label">Valor de Custo (R$)</label>
-                        <input type="number" class="form-control" id="valor_custo" name="valor_custo" min="0" step="0.01" required>
+                        <label for="valor_varejo" class="form-label">Valor de Varejo (R$)</label>
+                        <input type="number" class="form-control" id="valor_varejo" name="valor_varejo" min="0" step="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="valor_atacado" class="form-label">Valor de Atacado (R$)</label>
+                        <input type="number" class="form-control" id="valor_atacado" name="valor_atacado" min="0" step="0.01" required>
                     </div>
                     <div class="mb-3">
                         <label for="compatibilidade" class="form-label">Compatibilidade</label>
@@ -57,8 +61,8 @@
                     <i class="fas fa-list me-2"></i>
                     Produtos em Estoque
                 </h5>
-                <div class="input-group" style="max-width: 300px;">
-                    <input type="text" class="form-control" id="busca-produto" placeholder="Buscar produto...">
+                <div class="input-group" style="max-width: 400px;">
+                    <input type="text" class="form-control" id="busca-produto" placeholder="Buscar produto..." style="min-width: 200px;">
                     <button class="btn btn-light" type="button" id="btn-buscar">
                         <i class="fas fa-search"></i>
                     </button>
@@ -74,7 +78,8 @@
                             <tr>
                                 <th>Produto</th>
                                 <th>Quantidade</th>
-                                <th>Valor de Custo</th>
+                                <th>Valor Varejo</th>
+                                <th>Valor Atacado</th>
                                 <th>Compatibilidade</th>
                                 <th>Ações</th>
                             </tr>
@@ -117,8 +122,12 @@
                         <input type="number" class="form-control" id="edit-quantidade" min="0" required>
                     </div>
                     <div class="mb-3">
-                        <label for="edit-valor_custo" class="form-label">Valor de Custo (R$)</label>
-                        <input type="number" class="form-control" id="edit-valor_custo" min="0" step="0.01" required>
+                        <label for="edit-valor_varejo" class="form-label">Valor de Varejo (R$)</label>
+                        <input type="number" class="form-control" id="edit-valor_varejo" min="0" step="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-valor_atacado" class="form-label">Valor de Atacado (R$)</label>
+                        <input type="number" class="form-control" id="edit-valor_atacado" min="0" step="0.01" required>
                     </div>
                     <div class="mb-3">
                         <label for="edit-compatibilidade" class="form-label">Compatibilidade</label>
@@ -191,7 +200,8 @@ function renderizarProdutos(produtosParaRenderizar) {
             <tr>
                 <td><strong>${produto.nome}</strong></td>
                 <td class="${classeQuantidade}"><strong>${produto.quantidade}</strong></td>
-                <td>R$ ${produto.valor_custo.toFixed(2).replace('.', ',')}</td>
+                <td>R$ ${produto.valor_varejo.toFixed(2).replace('.', ',')}</td>
+                <td>R$ ${produto.valor_atacado.toFixed(2).replace('.', ',')}</td>
                 <td><small class="text-muted">${produto.compatibilidade || 'N/A'}</small></td>
                 <td>
                     <button class="btn btn-sm btn-warning me-1" onclick="editarProduto(${produto.id})">
@@ -237,7 +247,8 @@ function adicionarProduto() {
     const dados = {
         nome: $('#nome').val(),
         quantidade: parseInt($('#quantidade').val()),
-        valor_custo: parseFloat($('#valor_custo').val()),
+        valor_varejo: parseFloat($('#valor_varejo').val()),
+        valor_atacado: parseFloat($('#valor_atacado').val()),
         compatibilidade: $('#compatibilidade').val()
     };
     
@@ -266,7 +277,8 @@ function editarProduto(id) {
     $('#edit-id').val(produto.id);
     $('#edit-nome').val(produto.nome);
     $('#edit-quantidade').val(produto.quantidade);
-    $('#edit-valor_custo').val(produto.valor_custo);
+    $('#edit-valor_varejo').val(produto.valor_varejo);
+    $('#edit-valor_atacado').val(produto.valor_atacado);
     $('#edit-compatibilidade').val(produto.compatibilidade);
     
     $('#modal-editar').modal('show');
@@ -277,7 +289,8 @@ function salvarEdicao() {
     const dados = {
         nome: $('#edit-nome').val(),
         quantidade: parseInt($('#edit-quantidade').val()),
-        valor_custo: parseFloat($('#edit-valor_custo').val()),
+        valor_varejo: parseFloat($('#edit-valor_varejo').val()),
+        valor_atacado: parseFloat($('#edit-valor_atacado').val()),
         compatibilidade: $('#edit-compatibilidade').val()
     };
     

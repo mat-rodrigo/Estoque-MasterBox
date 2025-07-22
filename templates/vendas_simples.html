@@ -36,14 +36,12 @@
                 <div class="mb-3">
                     <label class="form-label">Produto:</label>
                     <div class="input-group">
-                        <input type="text" class="form-control" id="produto-busca" placeholder="Digite o nome do produto...">
+                        <input type="text" class="form-control" id="produto-input" autocomplete="off" placeholder="Digite o nome do produto...">
                         <button class="btn btn-outline-secondary" type="button" onclick="limparBuscaProduto()">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
-                    <div id="lista-produtos-busca" class="mt-2" style="display: none;">
-                        <div class="list-group" id="resultados-produtos"></div>
-                    </div>
+                    <ul id="sugestoes-produto" style="position:absolute; z-index:1000; background:white; border:1px solid #ccc; width:100%; list-style:none; padding-left:0;"></ul>
                     <div id="produto-selecionado" class="mt-2" style="display: none;">
                         <div class="alert alert-success">
                             <strong id="nome-produto"></strong><br>
@@ -394,17 +392,50 @@ $(document).ready(function() {
     
     carregarProdutos(false);
     carregarVendas();
+
+    // Autocomplete do campo de produto
+    let timeoutBuscaProduto;
+    $('#produto-input').on('input', function() {
+        clearTimeout(timeoutBuscaProduto);
+        const termo = $(this).val().trim();
+        if (termo.length < 2) {
+            $('#sugestoes-produto').empty();
+            return;
+        }
+        timeoutBuscaProduto = setTimeout(function() {
+            $.get(`/api/produtos/busca?q=${encodeURIComponent(termo)}`, function(produtos) {
+                const sugestoes = $('#sugestoes-produto');
+                sugestoes.empty();
+                produtos.forEach(function(prod) {
+                    const li = $('<li></li>')
+                        .text(prod.nome + ' (Estoque: ' + prod.quantidade + ')')
+                        .css({padding: '4px 8px', cursor: 'pointer'})
+                        .on('mousedown', function(e) { // usar mousedown para evitar conflito com blur
+                            selecionarProdutoAutocomplete(prod);
+                        });
+                    sugestoes.append(li);
+                });
+            });
+        }, 200);
+    });
+
+    // Esconde sugestões ao clicar fora
+    $(document).on('mousedown', function(e) {
+        if (!$(e.target).closest('#produto-input, #sugestoes-produto').length) {
+            $('#sugestoes-produto').empty();
+        }
+    });
     
     // Busca automática de produtos
-    let timeoutBuscaProduto;
-    $('#produto-busca').on('input', function() {
-        clearTimeout(timeoutBuscaProduto);
-        const busca = $(this).val().trim();
+    // let timeoutBuscaProduto; // This line is removed as per the new_code, as the autocomplete handles it.
+    // $('#produto-busca').on('input', function() { // This line is removed as per the new_code, as the autocomplete handles it.
+    //     clearTimeout(timeoutBuscaProduto); // This line is removed as per the new_code, as the autocomplete handles it.
+    //     const busca = $(this).val().trim(); // This line is removed as per the new_code, as the autocomplete handles it.
         
-        timeoutBuscaProduto = setTimeout(function() {
-            buscarProdutos(busca);
-        }, 300);
-    });
+    //     timeoutBuscaProduto = setTimeout(function() { // This line is removed as per the new_code, as the autocomplete handles it.
+    //         buscarProdutos(busca); // This line is removed as per the new_code, as the autocomplete handles it.
+    //     }, 300); // This line is removed as per the new_code, as the autocomplete handles it.
+    // }); // This line is removed as per the new_code, as the autocomplete handles it.
     
     // Adicionar hover effect aos cards de pagamento
     $('.payment-option').hover(
@@ -524,9 +555,19 @@ function selecionarProduto(id) {
     }
 }
 
+function selecionarProdutoAutocomplete(prod) {
+    produtoSelecionado = prod;
+    $('#produto-input').val(prod.nome);
+    $('#sugestoes-produto').empty();
+    $('#nome-produto').text(prod.nome);
+    $('#info-produto').text('Estoque: ' + prod.quantidade);
+    $('#produto-selecionado').show();
+    $('#quantidade').attr('max', prod.quantidade);
+}
+
 function limparBuscaProduto() {
-    $('#produto-busca').val('');
-    $('#lista-produtos-busca').hide();
+    $('#produto-input').val('');
+    $('#sugestoes-produto').empty();
     $('#produto-selecionado').hide();
     produtoSelecionado = null;
 }
@@ -561,8 +602,8 @@ function adicionarProduto() {
         id: produtoSelecionado.id,
         nome: produtoSelecionado.nome,
         quantidade: quantidade,
-        valor_unitario: produtoSelecionado.valor_custo,
-        valor_total: produtoSelecionado.valor_custo * quantidade
+        valor_unitario: produtoSelecionado.valor_varejo,
+        valor_total: produtoSelecionado.valor_varejo * quantidade
     });
     
     atualizarListaProdutos();
@@ -713,7 +754,8 @@ function selecionarPagamento(tipo) {
             itens: produtosSelecionados.map(produto => ({
                 produto_id: parseInt(produto.id),
                 quantidade: produto.quantidade
-            }))
+            })),
+            tipo_venda: 'simples'
         };
         
         finalizarVendaComDados(dados);
@@ -734,7 +776,8 @@ function selecionarPagamento(tipo) {
             itens: produtosSelecionados.map(produto => ({
                 produto_id: parseInt(produto.id),
                 quantidade: produto.quantidade
-            }))
+            })),
+            tipo_venda: 'simples'
         };
         
         finalizarVendaComDados(dados);
@@ -769,7 +812,8 @@ function selecionarPagamentoCredito() {
         itens: produtosSelecionados.map(produto => ({
             produto_id: parseInt(produto.id),
             quantidade: produto.quantidade
-        }))
+        })),
+        tipo_venda: 'simples'
     };
     
     finalizarVendaComDados(dados);
@@ -910,7 +954,8 @@ function confirmarMultiplosPagamentos() {
         itens: produtosSelecionados.map(produto => ({
             produto_id: parseInt(produto.id),
             quantidade: produto.quantidade
-        }))
+        })),
+        tipo_venda: 'simples'
     };
     
     finalizarVendaComDados(dados);

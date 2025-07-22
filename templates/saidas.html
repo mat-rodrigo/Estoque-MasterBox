@@ -645,12 +645,30 @@ function renderizarDevolucoes(devolucoes) {
     
     let html = '';
     devolucoes.forEach(function(devolucao) {
+        // Extrair nomes dos produtos do JSON
+        let nomesProdutos = '-';
+        if (devolucao.produtos_devolvidos) {
+            try {
+                const lista = JSON.parse(devolucao.produtos_devolvidos);
+                if (Array.isArray(lista)) {
+                    nomesProdutos = lista.map(p => p.nome).join(', ');
+                } else {
+                    nomesProdutos = '-';
+                }
+            } catch (e) {
+                nomesProdutos = '-';
+            }
+        }
+        // Mostrar apenas a observação do usuário
+        let obs = devolucao.observacoes || '-';
+        // Se for devolução atacadista, remover prefixo automático
+        obs = obs.replace(/^\[DEVOLUÇÃO ATACADISTA.*?\]\s*/i, '');
         html += `
             <tr>
                 <td><small>${devolucao.data_devolucao}</small></td>
                 <td><strong class="text-danger">R$ ${devolucao.valor.toFixed(2).replace('.', ',')}</strong></td>
-                <td><small>${devolucao.produtos_devolvidos || '-'}</small></td>
-                <td><small>${devolucao.observacoes || '-'}</small></td>
+                <td><small>${nomesProdutos}</small></td>
+                <td><small>${obs}</small></td>
             </tr>
         `;
     });
