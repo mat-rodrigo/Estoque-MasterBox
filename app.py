@@ -339,7 +339,8 @@ def get_crediarios():
         'cliente_nome': c.cliente.nome,
         'cliente_id': c.cliente_id,
         'venda_id': c.venda_id,
-        'valor_total': c.valor_total,
+        'valor_total': c.venda.valor_total if c.venda else c.valor_total,  # Sempre o valor original da venda
+        'valor_atual': c.valor_total,  # Valor atual após devoluções
         'valor_pago': c.valor_pago,
         'valor_restante': c.valor_total - c.valor_pago,
         'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
@@ -429,7 +430,8 @@ def get_crediarios_cliente(cliente_id):
     return jsonify([{
         'id': c.id,
         'venda_id': c.venda_id,
-        'valor_total': c.valor_total,
+        'valor_total': c.venda.valor_total if c.venda else c.valor_total,  # Sempre o valor original da venda
+        'valor_atual': c.valor_total,  # Valor atual após devoluções
         'valor_pago': c.valor_pago,
         'valor_restante': c.valor_total - c.valor_pago,
         'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
@@ -437,6 +439,7 @@ def get_crediarios_cliente(cliente_id):
         'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
         'observacoes': c.observacoes,
         'tem_devolucao': DevolucaoCrediario.query.filter_by(crediario_id=c.id).first() is not None,
+        'completamente_devolvido': _todos_produtos_devolvidos(c),
         'produtos': [
             {
                 'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
@@ -447,6 +450,29 @@ def get_crediarios_cliente(cliente_id):
         ] if c.venda else []
     } for c in crediarios])
 
+def _todos_produtos_devolvidos(crediario):
+    """Retorna True se todos os produtos da venda do crediário foram devolvidos"""
+    if not crediario.venda:
+        return False
+    # Soma quantidades vendidas
+    vendidos = {item.produto_id: item.quantidade for item in crediario.venda.produtos_vendidos}
+    # Soma quantidades devolvidas
+    devolvidos = {}
+    devolucoes = DevolucaoCrediario.query.filter_by(crediario_id=crediario.id).all()
+    import json
+    for dev in devolucoes:
+        try:
+            lista = json.loads(dev.produtos_devolvidos)
+            for p in lista:
+                devolvidos[p['id']] = devolvidos.get(p['id'], 0) + p['quantidade']
+        except:
+            pass
+    # Verifica se todos os produtos vendidos foram totalmente devolvidos
+    for pid, qtd in vendidos.items():
+        if devolvidos.get(pid, 0) < qtd:
+            return False
+    return True
+
 @app.route('/api/crediarios/<int:id>')
 def get_crediario_detalhado(id):
     crediario = Crediario.query.get_or_404(id)
@@ -455,7 +481,8 @@ def get_crediario_detalhado(id):
         'cliente_nome': crediario.cliente.nome,
         'cliente_id': crediario.cliente_id,
         'venda_id': crediario.venda_id,
-        'valor_total': crediario.valor_total,
+        'valor_total': crediario.venda.valor_total if crediario.venda else crediario.valor_total,  # Sempre o valor original da venda
+        'valor_atual': crediario.valor_total,  # Valor atual após devoluções
         'valor_pago': crediario.valor_pago,
         'valor_restante': crediario.valor_total - crediario.valor_pago,
         'data_vencimento': crediario.data_vencimento.strftime('%d/%m/%Y'),
@@ -493,53 +520,105 @@ def devolver_crediario(id):
     if not data:
         return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
     
-    valor_devolvido = data['valor_devolvido']
-    
-    # Validar se o valor devolvido não excede o valor restante
-    valor_restante = crediario.valor_total - crediario.valor_pago
-    if valor_devolvido > valor_restante:
-        return jsonify({'success': False, 'error': 'Valor da devolução não pode ser maior que o valor restante'}), 400
-    
+    produtos_devolvidos_json = data.get('produtos_devolvidos', '')
+    try:
+        produtos_devolvidos = []
+        if produtos_devolvidos_json:
+            import json
+            produtos_devolvidos = json.loads(produtos_devolvidos_json)
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Produtos devolvidos em formato inválido'}), 400
+
+    # Calcular valor_devolvido com base nos produtos devolvidos
+    valor_devolvido = 0
+    for prod in produtos_devolvidos:
+        valor_devolvido += prod.get('valor_unitario', 0) * prod.get('quantidade', 0)
+
+    # Devolver produtos ao estoque
+    for prod in produtos_devolvidos:
+        produto = Produto.query.get(prod['id'])
+        if produto:
+            produto.quantidade += prod['quantidade']
+
+    # Verificar se todos os produtos foram devolvidos após esta devolução
+    def _todos_produtos_devolvidos_apos(crediario, nova_devolucao):
+        if not crediario.venda:
+            return False
+        vendidos = {item.produto_id: item.quantidade for item in crediario.venda.produtos_vendidos}
+        devolvidos = {}
+        devolucoes = DevolucaoCrediario.query.filter_by(crediario_id=crediario.id).all()
+        import json
+        for dev in devolucoes:
+            try:
+                lista = json.loads(dev.produtos_devolvidos)
+                for p in lista:
+                    devolvidos[p['id']] = devolvidos.get(p['id'], 0) + p['quantidade']
+            except:
+                pass
+        # Adiciona a devolução atual
+        for p in nova_devolucao:
+            devolvidos[p['id']] = devolvidos.get(p['id'], 0) + p['quantidade']
+        for pid, qtd in vendidos.items():
+            if devolvidos.get(pid, 0) < qtd:
+                return False
+        return True
+
+    todos_devolvidos = _todos_produtos_devolvidos_apos(crediario, produtos_devolvidos)
+
+    foi_pago = crediario.valor_pago > 0
+
+    if not foi_pago:
+        if todos_devolvidos:
+            crediario.valor_total = 0
+            crediario.status = 'Retorno'
+        else:
+            crediario.valor_total -= valor_devolvido
+            if crediario.valor_total < 0:
+                crediario.valor_total = 0
+            # Status permanece Pendente
+    else:
+        if crediario.status == 'Pago':
+            if valor_devolvido > crediario.valor_pago:
+                return jsonify({'success': False, 'error': 'Valor da devolução não pode ser maior que o valor pago'}), 400
+            # NÃO subtrai valor_total, apenas registra devolução e saída no caixa
+            # Status permanece 'Pago'
+        else:
+            valor_restante = crediario.valor_total - crediario.valor_pago
+            if valor_devolvido > valor_restante:
+                return jsonify({'success': False, 'error': 'Valor da devolução não pode ser maior que o valor restante'}), 400
+            crediario.valor_total -= valor_devolvido
+            if crediario.valor_total < 0:
+                crediario.valor_total = 0
+            if todos_devolvidos:
+                crediario.status = 'Retorno'
+            elif crediario.valor_pago >= crediario.valor_total:
+                crediario.status = 'Pago'
+            elif crediario.data_vencimento < date.today():
+                crediario.status = 'Atrasado'
+            else:
+                crediario.status = 'Pendente'
+
     # Registrar a devolução de crediário
     devolucao = DevolucaoCrediario(
         crediario_id=id,
-        produtos_devolvidos=data.get('produtos_devolvidos', ''),
+        produtos_devolvidos=produtos_devolvidos_json,
         valor_devolvido=valor_devolvido,
         observacoes=data.get('observacoes', '')
     )
     db.session.add(devolucao)
-    
     # Também registrar no histórico geral de devoluções (saídas)
     devolucao_saida = Devolucao(
         valor=valor_devolvido,
-        produtos_devolvidos=data.get('produtos_devolvidos', ''),
+        produtos_devolvidos=produtos_devolvidos_json,
         observacoes=f"[DEVOLUÇÃO ATACADISTA - Crediário ID {id}] " + data.get('observacoes', '')
     )
     db.session.add(devolucao_saida)
-    
-    # Decrementar o valor total do crediário pelo valor devolvido
-    crediario.valor_total -= valor_devolvido
-    
-    # Se o valor total ficar negativo, zerar
-    if crediario.valor_total < 0:
-        crediario.valor_total = 0
-    
-    # Atualizar status baseado no novo valor total
-    if crediario.valor_pago >= crediario.valor_total:
-        crediario.status = 'Pago'
-    elif crediario.data_vencimento < date.today():
-        crediario.status = 'Atrasado'
-    else:
-        crediario.status = 'Pendente'
-    
     # Adicionar observação sobre a devolução
     if crediario.observacoes:
         crediario.observacoes += f"\n--- Devolução em {datetime.now().strftime('%d/%m/%Y %H:%M')} ---\n{data.get('observacoes', '')}"
     else:
         crediario.observacoes = f"Devolução em {datetime.now().strftime('%d/%m/%Y %H:%M')}: {data.get('observacoes', '')}"
-    
     db.session.commit()
-    
     return jsonify({
         'success': True,
         'valor_restante': crediario.valor_total - crediario.valor_pago,

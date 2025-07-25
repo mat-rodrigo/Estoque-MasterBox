@@ -498,8 +498,8 @@ function carregarCrediariosAtacadista(clienteId) {
     $.get(`/api/crediarios/cliente/${clienteId}`, function(data) {
         const container = $('#crediarios-atacadista');
         
-        // Filtrar apenas crediários pendentes para exibição
-        const crediariosPendentes = data.filter(c => c.status !== 'Pago');
+        // Filtrar apenas crediários pendentes para exibição (status Pendente ou Atrasado)
+        const crediariosPendentes = data.filter(c => c.status === 'Pendente' || c.status === 'Atrasado');
         
         if (crediariosPendentes.length === 0) {
             container.html('<p class="text-muted text-center">Nenhuma dívida pendente</p>');

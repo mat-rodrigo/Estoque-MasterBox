@@ -188,11 +188,10 @@
                 
                 <div class="mb-3">
                     <label class="form-label">Produtos da Venda:</label>
-                    <div id="produtos-venda-devolucao">
+                    <div id="produtos-venda-devolucao-tabela">
                         <p class="text-muted text-center">Carregando produtos...</p>
                     </div>
                 </div>
-                
                 <div class="mb-3">
                     <label class="form-label">Produtos Selecionados para Devolução:</label>
                     <div id="produtos-selecionados-devolucao">
@@ -236,6 +235,7 @@ let atacadistas = [];
 let atacadistaSelecionado = null;
 let crediariosAtacadista = [];
 let crediarioSelecionado = null;
+let produtosDisponiveisParaDevolucao = {};
 
 $(document).ready(function() {
     console.log('=== PÁGINA DE PAGAMENTOS DE CREDIÁRIOS CARREGADA ===');
@@ -401,10 +401,12 @@ function carregarCrediariosAtacadista(clienteId) {
         let html = '<div class="list-group">';
         data.forEach(function(crediario) {
             const statusClass = crediario.status === 'Pago' ? 'list-group-item-success' : 
-                              crediario.status === 'Atrasado' ? 'list-group-item-danger' : 'list-group-item-warning';
+                              crediario.status === 'Atrasado' ? 'list-group-item-danger' : 
+                              crediario.status === 'Retorno' ? 'list-group-item-primary' : 'list-group-item-warning';
             
             const statusBadge = crediario.status === 'Pago' ? 'success' : 
-                              crediario.status === 'Atrasado' ? 'danger' : 'warning';
+                              crediario.status === 'Atrasado' ? 'danger' : 
+                              crediario.status === 'Retorno' ? 'primary' : 'warning';
             
             html += `
                 <div class="list-group-item ${statusClass}">
@@ -416,16 +418,18 @@ function carregarCrediariosAtacadista(clienteId) {
                             </div>
                             <small class="text-muted">Vencimento: ${crediario.data_vencimento}</small><br>
                             <small class="text-muted">Criado em: ${crediario.data_criacao}</small>
-                            ${crediario.valor_total === 0 && crediario.tem_devolucao ? '<br><small class="text-danger"><i class="fas fa-undo me-1"></i>Completamente Devolvido</small>' : ''}
+                            ${(crediario.valor_total === 0 && crediario.tem_devolucao) ? '<br><small class="text-danger"><i class="fas fa-undo me-1"></i>Completamente Devolvido</small>' : ''}
                         </div>
                         <div class="ms-3">
                             <button type="button" class="btn btn-sm btn-info me-1" onclick="verHistoricoPagamentos(${crediario.id})">
                                 <i class="fas fa-history me-1"></i>Histórico
                             </button>
-                            ${crediario.valor_restante > 0 ? `
+                            ${!(crediario.completamente_devolvido) && crediario.valor_restante > 0 ? `
                                 <button type="button" class="btn btn-sm btn-success me-1" onclick="abrirModalPagamento(${crediario.id})">
                                     <i class="fas fa-money-bill-wave me-1"></i>Pagar
                                 </button>
+                            ` : ''}
+                            ${!crediario.completamente_devolvido ? `
                                 <button type="button" class="btn btn-sm btn-warning" onclick="abrirModalDevolucao(${crediario.id})">
                                     <i class="fas fa-undo me-1"></i>Devolver
                                 </button>
@@ -467,8 +471,8 @@ function calcularResumoFinanceiro() {
     resumoContainer.html(loadingHtml);
     
     const totalDevido = crediariosAtacadista.reduce((sum, c) => sum + c.valor_restante, 0);
-    const totalPago = crediariosAtacadista.reduce((sum, c) => sum + (c.valor_total - c.valor_restante), 0);
-    const crediariosPendentes = crediariosAtacadista.filter(c => c.status !== 'Pago').length;
+    const totalPago = crediariosAtacadista.reduce((sum, c) => sum + c.valor_pago, 0);
+    const crediariosPendentes = crediariosAtacadista.filter(c => c.status === 'Pendente' || c.status === 'Atrasado');
     const crediariosAtrasados = crediariosAtacadista.filter(c => c.status === 'Atrasado').length;
     
     // Pequeno delay para mostrar o indicador de atualização
@@ -505,7 +509,7 @@ function calcularResumoFinanceiro() {
                 <div class="col-6">
                     <div class="border rounded p-2 mb-2">
                         <small class="text-muted">Pendentes</small><br>
-                        <strong class="text-warning">${crediariosPendentes}</strong>
+                        <strong class="text-warning">${crediariosPendentes.length}</strong>
                     </div>
                 </div>
                 <div class="col-6">
@@ -732,72 +736,88 @@ function abrirModalDevolucao(crediarioId) {
     $('#devolucao-valor-restante').text('R$ ' + crediarioSelecionado.valor_restante.toFixed(2).replace('.', ','));
     $('#devolucao-status').text(crediarioSelecionado.status);
 
-    // Carregar produtos da venda
-    $.get(`/api/vendas/produtos/${crediarioSelecionado.venda_id}`, function(produtos) {
-        const produtosVendaContainer = $('#produtos-venda-devolucao');
-        produtosVendaContainer.empty();
+    // Buscar produtos da venda e devoluções já realizadas
+    Promise.all([
+        $.get(`/api/vendas/produtos/${crediarioSelecionado.venda_id}`),
+        $.get(`/api/crediarios/${crediarioSelecionado.id}/devolucoes`)
+    ]).then(function([produtos, devolucoes]) {
+        // Calcular saldo de cada produto
+        const devolvidosPorId = {};
+        devolucoes.forEach(function(dev) {
+            try {
+                const lista = JSON.parse(dev.produtos_devolvidos);
+                lista.forEach(function(p) {
+                    devolvidosPorId[p.id] = (devolvidosPorId[p.id] || 0) + p.quantidade;
+                });
+            } catch(e) {}
+        });
+        produtosDisponiveisParaDevolucao = {};
+        // Tabela de produtos da venda (apenas os que ainda podem ser devolvidos)
+        const produtosVendaContainer = $('#produtos-venda-devolucao-tabela');
         if (produtos && produtos.length > 0) {
-            let html = '<div class="list-group">';
+            let html = '<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Produto</th><th>Qtd Vendida</th><th>Qtd Devolvida</th><th>Qtd Disponível</th><th>Valor Unit.</th><th>Qtd a Devolver</th><th></th></tr></thead><tbody>';
             produtos.forEach(function(prod) {
-                html += `
-                    <div class="list-group-item d-flex justify-content-between align-items-center" 
-                         data-produto-id="${prod.id}" 
-                         data-produto='${JSON.stringify(prod)}'>
-                        <div>
-                            <strong>${prod.nome}</strong><br>
-                            <small class="text-muted">Qtd: ${prod.quantidade}, Valor: R$ ${prod.valor_unitario.toFixed(2).replace('.', ',')}</small>
-                        </div>
-                        <div>
-                            <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="adicionarProdutoDevolucao(${prod.id})">
-                                <i class="fas fa-plus-circle"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
+                const qtdDevolvida = devolvidosPorId[prod.id] || 0;
+                const qtdDisponivel = prod.quantidade - qtdDevolvida;
+                produtosDisponiveisParaDevolucao[prod.id] = {
+                    nome: prod.nome,
+                    valor_unitario: prod.valor_unitario,
+                    qtdDisponivel: qtdDisponivel
+                };
+                html += `<tr>
+                    <td>${prod.nome}</td>
+                    <td>${prod.quantidade}</td>
+                    <td>${qtdDevolvida}</td>
+                    <td>${qtdDisponivel > 0 ? qtdDisponivel : 0}</td>
+                    <td>R$ ${prod.valor_unitario.toFixed(2).replace('.', ',')}</td>
+                    <td>${qtdDisponivel > 0 ? `<input type='number' min='1' max='${qtdDisponivel}' value='1' id='qtd-dev-${prod.id}' style='width:60px;' class='form-control form-control-sm' />` : ''}</td>
+                    <td>${qtdDisponivel > 0 ? `<button type='button' class='btn btn-sm btn-outline-primary' onclick='adicionarProdutoDevolucao(${prod.id})'><i class="fas fa-plus-circle"></i></button>` : ''}</td>
+                </tr>`;
             });
-            html += '</div>';
+            html += '</tbody></table></div>';
             produtosVendaContainer.html(html);
         } else {
             produtosVendaContainer.html('<p class="text-muted text-center">Nenhum produto registrado para esta venda.</p>');
         }
-    }).fail(function(xhr, status, error) {
-        console.error('Erro ao carregar produtos da venda:', error);
-        $('#produtos-venda-devolucao').html('<p class="text-danger">Erro ao carregar produtos da venda.</p>');
     });
 
     // Limpar produtos selecionados para devolução
     $('#produtos-selecionados-devolucao').empty();
     $('#produtos-selecionados-devolucao').html('<p class="text-muted text-center">Nenhum produto selecionado</p>');
-
-    $('#observacoes-devolucao').val(''); // Limpar observações
-
+    $('#observacoes-devolucao').val('');
     $('#modalDevolucao').modal('show');
 }
 
 function adicionarProdutoDevolucao(produtoId) {
-    const produtoElement = $(`#produtos-venda-devolucao .list-group-item[data-produto-id="${produtoId}"]`);
-    const produto = JSON.parse(produtoElement.attr('data-produto'));
-    
-    if (produto) {
-        const produtoSelecionado = $('#produtos-selecionados-devolucao').find(`.list-group-item[data-produto-id="${produtoId}"]`);
-        if (produtoSelecionado.length === 0) {
-            const itemHtml = `
-                <div class="list-group-item d-flex justify-content-between align-items-center" data-produto-id="${produtoId}">
-                    <div>
-                        <strong>${produto.nome}</strong><br>
-                        <small class="text-muted">Qtd: ${produto.quantidade}, Valor: R$ ${produto.valor_unitario.toFixed(2).replace('.', ',')}</small>
-                    </div>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removerProdutoDevolucao(${produtoId})">
-                            <i class="fas fa-times-circle"></i>
-                        </button>
-                    </div>
+    const info = produtosDisponiveisParaDevolucao[produtoId];
+    if (!info || info.qtdDisponivel <= 0) {
+        alert('Este produto já foi totalmente devolvido.');
+        return;
+    }
+    const qtdInput = $(`#qtd-dev-${produtoId}`);
+    let qtd = parseInt(qtdInput.val());
+    if (isNaN(qtd) || qtd < 1) qtd = 1;
+    if (qtd > info.qtdDisponivel) qtd = info.qtdDisponivel;
+    const produtoSelecionado = $('#produtos-selecionados-devolucao').find(`.list-group-item[data-produto-id="${produtoId}"]`);
+    if (produtoSelecionado.length === 0) {
+        // Remover frase se for o primeiro produto
+        $('#produtos-selecionados-devolucao p.text-muted').remove();
+        const itemHtml = `
+            <div class="list-group-item d-flex justify-content-between align-items-center" data-produto-id="${produtoId}">
+                <div>
+                    <strong>${info.nome}</strong><br>
+                    <small class="text-muted">Qtd: ${qtd}, Valor: R$ ${(info.valor_unitario).toFixed(2).replace('.', ',')}</small>
                 </div>
-            `;
-            $('#produtos-selecionados-devolucao').append(itemHtml);
-        } else {
-            alert('Este produto já foi selecionado para devolução.');
-        }
+                <div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removerProdutoDevolucao(${produtoId})">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        $('#produtos-selecionados-devolucao').append(itemHtml);
+    } else {
+        alert('Este produto já foi selecionado para devolução.');
     }
 }
 
@@ -815,18 +835,26 @@ function realizarDevolucao() {
 
     produtosSelecionados.each(function() {
         const produtoId = $(this).data('produto-id');
-        const produtoElement = $(`#produtos-venda-devolucao .list-group-item[data-produto-id="${produtoId}"]`);
-        const produto = JSON.parse(produtoElement.attr('data-produto'));
-        
-        if (produto) {
-            produtosParaDevolucao.push({
-                id: produtoId,
-                nome: produto.nome,
-                quantidade: produto.quantidade,
-                valor_unitario: produto.valor_unitario
-            });
-            valorDevolucao += produto.valor_unitario * produto.quantidade;
+        const info = produtosDisponiveisParaDevolucao[produtoId];
+        const qtdInput = $(`#qtd-dev-${produtoId}`);
+        let qtd = 1;
+        if (qtdInput.length > 0) {
+            qtd = parseInt(qtdInput.val());
+            if (isNaN(qtd) || qtd < 1) qtd = 1;
+            if (qtd > info.qtdDisponivel) qtd = info.qtdDisponivel;
+        } else {
+            // Se não encontrar input, pega do texto do item
+            const txt = $(this).find('small').text();
+            const match = txt.match(/Qtd: (\d+)/);
+            if (match) qtd = parseInt(match[1]);
         }
+        produtosParaDevolucao.push({
+            id: produtoId,
+            nome: info.nome,
+            quantidade: qtd,
+            valor_unitario: info.valor_unitario
+        });
+        valorDevolucao += info.valor_unitario * qtd;
     });
 
     if (produtosParaDevolucao.length === 0) {
