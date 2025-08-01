@@ -72,6 +72,20 @@
                 </div>
             </div>
         </div>
+        
+        <div class="card mt-3">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-credit-card me-2"></i>
+                    Crédito na Loja
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="credito-loja">
+                    <p class="text-muted text-center">Selecione um atacadista para ver o crédito</p>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -101,6 +115,24 @@
                     <label class="form-label">Valor do Pagamento (R$):</label>
                     <input type="number" class="form-control" id="valor-pagamento" min="0.01" step="0.01" required>
                     <small class="form-text text-muted">Digite o valor que deseja pagar</small>
+                </div>
+                
+                <div class="mb-3" id="opcoes-pagamento-credito" style="display: none;">
+                    <label class="form-label">Forma de Pagamento:</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="formaPagamento" id="formaDinheiro" value="dinheiro" checked>
+                        <label class="form-check-label" for="formaDinheiro">
+                            <i class="fas fa-money-bill-wave me-1"></i>
+                            Dinheiro/Cartão
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="formaPagamento" id="formaCredito" value="credito">
+                        <label class="form-check-label" for="formaCredito">
+                            <i class="fas fa-credit-card me-1"></i>
+                            Usar Crédito na Loja
+                        </label>
+                    </div>
                 </div>
                 
                 <div class="mb-3">
@@ -199,6 +231,24 @@
                     </div>
                 </div>
                 
+                <div class="mb-3" id="opcoes-devolucao-pago" style="display: none;">
+                    <label class="form-label">Tipo de Devolução:</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="tipoDevolucao" id="tipoCaixa" value="caixa" checked>
+                        <label class="form-check-label" for="tipoCaixa">
+                            <i class="fas fa-cash-register me-1"></i>
+                            Receber o valor (retira do caixa diário)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="tipoDevolucao" id="tipoCredito" value="credito">
+                        <label class="form-check-label" for="tipoCredito">
+                            <i class="fas fa-credit-card me-1"></i>
+                            Deixar como crédito na loja
+                        </label>
+                    </div>
+                </div>
+                
                 <div class="mb-3">
                     <label class="form-label">Observações (opcional):</label>
                     <textarea class="form-control" id="observacoes-devolucao" rows="3" placeholder="Observações sobre a devolução..."></textarea>
@@ -209,7 +259,11 @@
                     <strong>Importante:</strong>
                     <ul class="mb-0 mt-2">
                         <li>Se o crediário estiver <strong>pendente</strong>, o valor será zerado</li>
-                        <li>Se o crediário estiver <strong>pago</strong>, o valor será subtraído do caixa diário</li>
+                        <li>Se o crediário estiver <strong>pago</strong>, você pode escolher entre:</li>
+                        <ul>
+                            <li><strong>Receber o valor:</strong> O valor será retirado do caixa diário</li>
+                            <li><strong>Crédito na loja:</strong> O valor ficará disponível como crédito para futuras compras</li>
+                        </ul>
                         <li>Após a devolução, o crediário não poderá mais ser pago</li>
                     </ul>
                 </div>
@@ -444,8 +498,9 @@ function carregarCrediariosAtacadista(clienteId) {
         container.html(html);
         $('#card-crediarios').show();
         
-        // Atualizar resumo financeiro automaticamente
+        // Atualizar resumo financeiro e crédito na loja automaticamente
         calcularResumoFinanceiro();
+        carregarCreditoLoja(clienteId);
     }).fail(function(xhr, status, error) {
         console.error('Erro ao carregar crediários:', error);
         $('#lista-crediarios').html('<p class="text-danger">Erro ao carregar crediários</p>');
@@ -481,48 +536,93 @@ function calcularResumoFinanceiro() {
             <div class="text-center mb-3">
                 <h6>Resumo do Atacadista</h6>
                 <p class="text-muted">${atacadistaSelecionado.nome}</p>
-                <small class="text-muted">
-                    <i class="fas fa-sync-alt me-1"></i>Atualizado automaticamente
-                </small>
-                <br>
-                <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="atualizarResumoManual()">
-                    <i class="fas fa-sync-alt me-1"></i>Atualizar Agora
-                </button>
             </div>
-            
             <div class="row text-center">
                 <div class="col-6">
-                    <div class="border rounded p-2 mb-2">
-                        <small class="text-muted">Total Devido</small><br>
-                        <strong class="text-danger">R$ ${totalDevido.toFixed(2).replace('.', ',')}</strong>
+                    <div class="border-end">
+                        <h5 class="text-primary mb-0">R$ ${totalDevido.toFixed(2).replace('.', ',')}</h5>
+                        <small class="text-muted">Total Devido</small>
                     </div>
                 </div>
                 <div class="col-6">
-                    <div class="border rounded p-2 mb-2">
-                        <small class="text-muted">Total Pago</small><br>
-                        <strong class="text-success">R$ ${totalPago.toFixed(2).replace('.', ',')}</strong>
-                    </div>
+                    <h5 class="text-success mb-0">R$ ${totalPago.toFixed(2).replace('.', ',')}</h5>
+                    <small class="text-muted">Total Pago</small>
                 </div>
             </div>
-            
+            <hr>
             <div class="row text-center">
                 <div class="col-6">
-                    <div class="border rounded p-2 mb-2">
-                        <small class="text-muted">Pendentes</small><br>
-                        <strong class="text-warning">${crediariosPendentes.length}</strong>
-                    </div>
+                    <h6 class="text-warning mb-0">${crediariosPendentes.length}</h6>
+                    <small class="text-muted">Crediários Pendentes</small>
                 </div>
                 <div class="col-6">
-                    <div class="border rounded p-2 mb-2">
-                        <small class="text-muted">Atrasados</small><br>
-                        <strong class="text-danger">${crediariosAtrasados}</strong>
+                    <h6 class="text-danger mb-0">${crediariosAtrasados}</h6>
+                    <small class="text-muted">Crediários Atrasados</small>
+                </div>
+            </div>
+        `;
+        resumoContainer.html(html);
+    }, 300);
+}
+
+function carregarCreditoLoja(clienteId) {
+    if (!clienteId) {
+        $('#credito-loja').html('<p class="text-muted text-center">Selecione um atacadista para ver o crédito</p>');
+        return;
+    }
+    
+    $.get(`/api/credito-loja/cliente/${clienteId}`).done(function(data) {
+        const container = $('#credito-loja');
+        
+        if (data.total_credito === 0) {
+            container.html(`
+                <div class="text-center">
+                    <h6 class="text-muted">R$ 0,00</h6>
+                    <small class="text-muted">Nenhum crédito disponível</small>
+                </div>
+            `);
+            return;
+        }
+        
+        let html = `
+            <div class="text-center mb-3">
+                <h4 class="text-info mb-0">R$ ${data.total_credito.toFixed(2).replace('.', ',')}</h4>
+                <small class="text-muted">Crédito Disponível</small>
+            </div>
+            <div class="mt-3">
+                <h6>Histórico de Créditos:</h6>
+                <div class="list-group list-group-flush">
+        `;
+        
+        data.creditos.forEach(function(credito) {
+            const valorClass = credito.valor > 0 ? 'text-success' : 'text-danger';
+            const icon = credito.valor > 0 ? 'plus' : 'minus';
+            
+            html += `
+                <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                    <div>
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-${icon} ${valorClass} me-2"></i>
+                            <span class="${valorClass}">R$ ${Math.abs(credito.valor).toFixed(2).replace('.', ',')}</span>
+                        </div>
+                        <small class="text-muted">${credito.data_criacao}</small>
+                        ${credito.observacoes ? `<br><small class="text-muted">${credito.observacoes}</small>` : ''}
                     </div>
+                    <small class="text-muted">${credito.origem.replace('_', ' ')}</small>
+                </div>
+            `;
+        });
+        
+        html += `
                 </div>
             </div>
         `;
         
-        $('#resumo-financeiro').html(html);
-    }, 300); // 300ms de delay
+        container.html(html);
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar crédito na loja:', error);
+        $('#credito-loja').html('<p class="text-danger">Erro ao carregar crédito</p>');
+    });
 }
 
 function abrirModalPagamento(crediarioId) {
@@ -544,12 +644,26 @@ function abrirModalPagamento(crediarioId) {
     $('#valor-pagamento').val(crediarioSelecionado.valor_restante);
     $('#observacoes-pagamento').val('');
     
+    // Verificar se há crédito disponível
+    $.get(`/api/credito-loja/cliente/${atacadistaSelecionado.id}`).done(function(data) {
+        if (data.total_credito > 0) {
+            $('#opcoes-pagamento-credito').show();
+            // Resetar seleção para dinheiro
+            $('#formaDinheiro').prop('checked', true);
+        } else {
+            $('#opcoes-pagamento-credito').hide();
+        }
+    }).fail(function() {
+        $('#opcoes-pagamento-credito').hide();
+    });
+    
     $('#modalPagamento').modal('show');
 }
 
 function realizarPagamento() {
     const valorPagamento = parseFloat($('#valor-pagamento').val()) || 0;
     const observacoes = $('#observacoes-pagamento').val();
+    const formaPagamento = $('input[name="formaPagamento"]:checked').val();
     
     if (valorPagamento <= 0) {
         alert('Digite um valor válido para o pagamento!');
@@ -561,47 +675,88 @@ function realizarPagamento() {
         return;
     }
     
-    const dadosPagamento = {
-        valor_pago: valorPagamento
-    };
-    
-    if (observacoes) {
-        dadosPagamento.observacoes = observacoes;
-    }
-    
     // Mostrar loading
     $('#modalPagamento .btn-success').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Processando...');
     
-    $.ajax({
-        url: `/api/crediarios/${crediarioSelecionado.id}/pagar`,
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify(dadosPagamento),
-        success: function(response) {
-            console.log('Pagamento realizado:', response);
-            
-            // Fechar modal
-            $('#modalPagamento').modal('hide');
-            
-            // Mostrar mensagem de sucesso
-            mostrarMensagemSucesso('Pagamento realizado com sucesso!');
-            
-            // Recarregar crediários e resumo automaticamente
-            if (atacadistaSelecionado) {
-                carregarCrediariosAtacadista(atacadistaSelecionado.id);
+    if (formaPagamento === 'credito') {
+        // Usar crédito na loja
+        const dadosCredito = {
+            valor: valorPagamento,
+            crediario_id: crediarioSelecionado.id,
+            observacoes: observacoes
+        };
+        
+        $.ajax({
+            url: `/api/credito-loja/cliente/${atacadistaSelecionado.id}/usar`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(dadosCredito),
+            success: function(response) {
+                console.log('Pagamento com crédito realizado:', response);
+                
+                // Fechar modal
+                $('#modalPagamento').modal('hide');
+                
+                // Mostrar mensagem de sucesso
+                mostrarMensagemSucesso('Pagamento com crédito realizado com sucesso!');
+                
+                // Recarregar crediários, resumo e crédito automaticamente
+                if (atacadistaSelecionado) {
+                    carregarCrediariosAtacadista(atacadistaSelecionado.id);
+                }
+                
+                // Resetar botão
+                $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
+            },
+            error: function(xhr, status, error) {
+                console.error('Erro ao realizar pagamento com crédito:', error);
+                alert('Erro ao realizar pagamento com crédito: ' + error);
+                
+                // Resetar botão
+                $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
             }
-            
-            // Resetar botão
-            $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
-        },
-        error: function(xhr, status, error) {
-            console.error('Erro ao realizar pagamento:', error);
-            alert('Erro ao realizar pagamento: ' + error);
-            
-            // Resetar botão
-            $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
+        });
+    } else {
+        // Pagamento normal
+        const dadosPagamento = {
+            valor_pago: valorPagamento
+        };
+        
+        if (observacoes) {
+            dadosPagamento.observacoes = observacoes;
         }
-    });
+        
+        $.ajax({
+            url: `/api/crediarios/${crediarioSelecionado.id}/pagar`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(dadosPagamento),
+            success: function(response) {
+                console.log('Pagamento realizado:', response);
+                
+                // Fechar modal
+                $('#modalPagamento').modal('hide');
+                
+                // Mostrar mensagem de sucesso
+                mostrarMensagemSucesso('Pagamento realizado com sucesso!');
+                
+                // Recarregar crediários e resumo automaticamente
+                if (atacadistaSelecionado) {
+                    carregarCrediariosAtacadista(atacadistaSelecionado.id);
+                }
+                
+                // Resetar botão
+                $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
+            },
+            error: function(xhr, status, error) {
+                console.error('Erro ao realizar pagamento:', error);
+                alert('Erro ao realizar pagamento: ' + error);
+                
+                // Resetar botão
+                $('#modalPagamento .btn-success').prop('disabled', false).html('<i class="fas fa-check me-2"></i>Confirmar Pagamento');
+            }
+        });
+    }
 }
 
 function verHistoricoPagamentos(crediarioId) {
@@ -735,6 +890,15 @@ function abrirModalDevolucao(crediarioId) {
     $('#devolucao-valor-pago').text('R$ ' + crediarioSelecionado.valor_pago.toFixed(2).replace('.', ','));
     $('#devolucao-valor-restante').text('R$ ' + crediarioSelecionado.valor_restante.toFixed(2).replace('.', ','));
     $('#devolucao-status').text(crediarioSelecionado.status);
+    
+    // Mostrar opções de devolução apenas se o crediário está pago
+    if (crediarioSelecionado.status === 'Pago' && crediarioSelecionado.valor_pago > 0) {
+        $('#opcoes-devolucao-pago').show();
+        // Resetar seleção para caixa
+        $('#tipoCaixa').prop('checked', true);
+    } else {
+        $('#opcoes-devolucao-pago').hide();
+    }
 
     // Buscar produtos da venda e devoluções já realizadas
     Promise.all([
@@ -864,10 +1028,17 @@ function realizarDevolucao() {
 
     const observacoesDevolucao = $('#observacoes-devolucao').val();
 
+    // Verificar tipo de devolução se o crediário está pago
+    let tipoDevolucao = 'caixa';
+    if (crediarioSelecionado.status === 'Pago' && crediarioSelecionado.valor_pago > 0) {
+        tipoDevolucao = $('input[name="tipoDevolucao"]:checked').val();
+    }
+
     const dadosDevolucao = {
         valor_devolvido: valorDevolucao,
         produtos_devolvidos: JSON.stringify(produtosParaDevolucao),
-        observacoes: observacoesDevolucao
+        observacoes: observacoesDevolucao,
+        tipo_devolucao: tipoDevolucao
     };
 
     // Mostrar loading
