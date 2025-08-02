@@ -488,28 +488,43 @@ def pagar_crediario(id):
 def get_crediarios_cliente(cliente_id):
     try:
         crediarios = Crediario.query.filter_by(cliente_id=cliente_id).order_by(Crediario.data_vencimento.asc()).all()
-        return jsonify([{
-            'id': c.id,
-            'venda_id': c.venda_id,
-            'valor_total': c.venda.valor_total if c.venda else c.valor_total,  # Sempre o valor original da venda
-            'valor_atual': c.valor_total,  # Valor atual após devoluções
-            'valor_pago': c.valor_pago,
-            'valor_restante': round(c.valor_total - c.valor_pago, 2),
-            'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
-            'status': c.status,
-            'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
-            'observacoes': c.observacoes,
-            'tem_devolucao': DevolucaoCrediario.query.filter_by(crediario_id=c.id).first() is not None,
-            'completamente_devolvido': _todos_produtos_devolvidos(c),
-            'produtos': [
-                {
-                    'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
-                    'quantidade': item.quantidade,
-                    'valor_unitario': item.valor_unitario
-                }
-                for item in c.venda.produtos_vendidos
-            ] if c.venda else []
-        } for c in crediarios])
+        
+        resultado = []
+        for c in crediarios:
+            # Calcular valor pago excluindo pagamentos com crédito da loja
+            pagamentos_com_credito = PagamentoCrediario.query.filter(
+                PagamentoCrediario.crediario_id == c.id,
+                PagamentoCrediario.observacoes.contains('Pagamento com crédito na loja')
+            ).all()
+            
+            valor_pago_com_credito = sum(p.valor_pago for p in pagamentos_com_credito)
+            valor_pago_real = c.valor_pago - valor_pago_com_credito
+            
+            resultado.append({
+                'id': c.id,
+                'venda_id': c.venda_id,
+                'valor_total': c.venda.valor_total if c.venda else c.valor_total,  # Sempre o valor original da venda
+                'valor_atual': c.valor_total,  # Valor atual após devoluções
+                'valor_pago': valor_pago_real,  # Valor pago excluindo crédito da loja
+                'valor_pago_total': c.valor_pago,  # Valor pago total (incluindo crédito)
+                'valor_restante': round(c.valor_total - c.valor_pago, 2),
+                'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
+                'status': c.status,
+                'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
+                'observacoes': c.observacoes,
+                'tem_devolucao': DevolucaoCrediario.query.filter_by(crediario_id=c.id).first() is not None,
+                'completamente_devolvido': _todos_produtos_devolvidos(c),
+                'produtos': [
+                    {
+                        'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
+                        'quantidade': item.quantidade,
+                        'valor_unitario': item.valor_unitario
+                    }
+                    for item in c.venda.produtos_vendidos
+                ] if c.venda else []
+            })
+        
+        return jsonify(resultado)
     except Exception as e:
         print(f"Erro na API de crediários: {e}")
         # Tentar executar migração se for erro de coluna não encontrada
@@ -521,28 +536,43 @@ def get_crediarios_cliente(cliente_id):
                 print("Migração executada com sucesso. Tentando novamente...")
                 # Tentar novamente a consulta
                 crediarios = Crediario.query.filter_by(cliente_id=cliente_id).order_by(Crediario.data_vencimento.asc()).all()
-                return jsonify([{
-                    'id': c.id,
-                    'venda_id': c.venda_id,
-                    'valor_total': c.venda.valor_total if c.venda else c.valor_total,
-                    'valor_atual': c.valor_total,
-                    'valor_pago': c.valor_pago,
-                    'valor_restante': round(c.valor_total - c.valor_pago, 2),
-                    'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
-                    'status': c.status,
-                    'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
-                    'observacoes': c.observacoes,
-                    'tem_devolucao': DevolucaoCrediario.query.filter_by(crediario_id=c.id).first() is not None,
-                    'completamente_devolvido': _todos_produtos_devolvidos(c),
-                    'produtos': [
-                        {
-                            'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
-                            'quantidade': item.quantidade,
-                            'valor_unitario': item.valor_unitario
-                        }
-                        for item in c.venda.produtos_vendidos
-                    ] if c.venda else []
-                } for c in crediarios])
+                
+                resultado = []
+                for c in crediarios:
+                    # Calcular valor pago excluindo pagamentos com crédito da loja
+                    pagamentos_com_credito = PagamentoCrediario.query.filter(
+                        PagamentoCrediario.crediario_id == c.id,
+                        PagamentoCrediario.observacoes.contains('Pagamento com crédito na loja')
+                    ).all()
+                    
+                    valor_pago_com_credito = sum(p.valor_pago for p in pagamentos_com_credito)
+                    valor_pago_real = c.valor_pago - valor_pago_com_credito
+                    
+                    resultado.append({
+                        'id': c.id,
+                        'venda_id': c.venda_id,
+                        'valor_total': c.venda.valor_total if c.venda else c.valor_total,
+                        'valor_atual': c.valor_total,
+                        'valor_pago': valor_pago_real,  # Valor pago excluindo crédito da loja
+                        'valor_pago_total': c.valor_pago,  # Valor pago total (incluindo crédito)
+                        'valor_restante': round(c.valor_total - c.valor_pago, 2),
+                        'data_vencimento': c.data_vencimento.strftime('%d/%m/%Y'),
+                        'status': c.status,
+                        'data_criacao': c.data_criacao.strftime('%d/%m/%Y'),
+                        'observacoes': c.observacoes,
+                        'tem_devolucao': DevolucaoCrediario.query.filter_by(crediario_id=c.id).first() is not None,
+                        'completamente_devolvido': _todos_produtos_devolvidos(c),
+                        'produtos': [
+                            {
+                                'nome': item.nome_produto or (item.produto.nome if item.produto else 'Produto removido'),
+                                'quantidade': item.quantidade,
+                                'valor_unitario': item.valor_unitario
+                            }
+                            for item in c.venda.produtos_vendidos
+                        ] if c.venda else []
+                    })
+                
+                return jsonify(resultado)
             except Exception as e2:
                 print(f"Erro na migração: {e2}")
                 return jsonify({'error': 'Erro na migração do banco de dados'}), 500
@@ -1253,9 +1283,22 @@ def calcular_caixa_diario(data_caixa=None):
     # Somar apenas vendas que NÃO estão no set de crediário
     total_vendas_simples = sum(venda.valor_total for venda in vendas_do_dia if venda.id not in vendas_crediario_ids)
     
-    # Pagamentos de crediário recebidos no dia
-    pagamentos_crediario = PagamentoCrediario.query.filter(db.func.date(PagamentoCrediario.data_pagamento) == data_caixa).all()
+    # Pagamentos de crediário recebidos no dia (excluindo pagamentos com crédito da loja)
+    pagamentos_crediario = PagamentoCrediario.query.filter(
+        db.func.date(PagamentoCrediario.data_pagamento) == data_caixa,
+        ~PagamentoCrediario.observacoes.contains('Pagamento com crédito na loja')
+    ).all()
     total_pagamentos_crediario = sum(p.valor_pago for p in pagamentos_crediario)
+    
+    # Log para debug
+    pagamentos_com_credito = PagamentoCrediario.query.filter(
+        db.func.date(PagamentoCrediario.data_pagamento) == data_caixa,
+        PagamentoCrediario.observacoes.contains('Pagamento com crédito na loja')
+    ).all()
+    total_pagamentos_com_credito = sum(p.valor_pago for p in pagamentos_com_credito)
+    
+    print(f"[CAIXA] Pagamentos crediário (entram no caixa): {total_pagamentos_crediario}")
+    print(f"[CAIXA] Pagamentos com crédito da loja (NÃO entram no caixa): {total_pagamentos_com_credito}")
     
     # Calcular saídas (devoluções, premiações, compras)
     devolucoes_do_dia = Devolucao.query.filter(
