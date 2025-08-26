@@ -7,6 +7,16 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 import os
 import io
+import re
+
+def limpar_nome_planilha(nome):
+    """Remove caracteres inválidos para nomes de planilhas Excel"""
+    # Caracteres inválidos: \ / ? * [ ]
+    nome_limpo = re.sub(r'[\\/?*[\]]', '', nome)
+    # Substituir espaços múltiplos por um único espaço
+    nome_limpo = re.sub(r'\s+', ' ', nome_limpo)
+    # Limitar a 31 caracteres (limite do Excel)
+    return nome_limpo[:31].strip()
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///estoque.db'
@@ -18,6 +28,7 @@ class Produto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(200), nullable=False)
     quantidade = db.Column(db.Integer, default=0)
+    valor_custo = db.Column(db.Float, default=0.0)
     valor_varejo = db.Column(db.Float, default=0.0)  # Novo campo para preço de venda simples
     valor_atacado = db.Column(db.Float, default=0.0) # Novo campo para preço de atacadista
     compatibilidade = db.Column(db.Text)
@@ -168,6 +179,20 @@ with app.app_context():
         except Exception as e:
             print(f"Erro na migração da coluna tipo_devolucao: {e}")
         
+        # Migração: adicionar coluna valor_custo na tabela produto se não existir
+        try:
+            result_prod = db.session.execute(text("PRAGMA table_info(produto)"))
+            colunas_prod = [row[1] for row in result_prod]
+            if 'valor_custo' not in colunas_prod:
+                print("Adicionando coluna valor_custo à tabela produto...")
+                db.session.execute(text("ALTER TABLE produto ADD COLUMN valor_custo FLOAT DEFAULT 0"))
+                db.session.commit()
+                print("Coluna valor_custo adicionada com sucesso!")
+            else:
+                print("Coluna valor_custo já existe na tabela produto.")
+        except Exception as e:
+            print(f"Erro na migração da coluna valor_custo: {e}")
+        
         print("Banco de dados criado/atualizado com sucesso!")
     except Exception as e:
         print(f"Erro ao criar banco de dados: {e}")
@@ -232,9 +257,11 @@ def get_produtos():
         'id': p.id,
         'nome': p.nome,
         'quantidade': p.quantidade,
+        'valor_custo': getattr(p, 'valor_custo', 0.0),
         'valor_varejo': p.valor_varejo,  # Novo campo
         'valor_atacado': p.valor_atacado,  # Novo campo
-        'compatibilidade': p.compatibilidade
+        'compatibilidade': p.compatibilidade,
+        'total_estoque': round((getattr(p, 'valor_custo', 0.0) or 0.0) * (p.quantidade or 0), 2)
     } for p in produtos])
 
 @app.route('/api/produtos', methods=['POST'])
@@ -246,6 +273,7 @@ def adicionar_produto():
     produto = Produto(
         nome=data['nome'],
         quantidade=data['quantidade'],
+        valor_custo=data.get('valor_custo', 0.0),
         valor_varejo=data.get('valor_varejo', 0.0),  # Novo campo
         valor_atacado=data.get('valor_atacado', 0.0),  # Novo campo
         compatibilidade=data['compatibilidade']
@@ -263,6 +291,7 @@ def atualizar_produto(id):
     
     produto.nome = data['nome']
     produto.quantidade = data['quantidade']
+    produto.valor_custo = data.get('valor_custo', getattr(produto, 'valor_custo', 0.0))
     produto.valor_varejo = data.get('valor_varejo', produto.valor_varejo)  # Novo campo
     produto.valor_atacado = data.get('valor_atacado', produto.valor_atacado)  # Novo campo
     produto.compatibilidade = data['compatibilidade']
@@ -283,7 +312,15 @@ def buscar_produtos():
         return jsonify([])
     produtos = Produto.query.filter(Produto.nome.ilike(f'%{termo}%')).all()
     return jsonify([
-        {'id': p.id, 'nome': p.nome, 'quantidade': p.quantidade, 'valor_varejo': p.valor_varejo, 'valor_atacado': p.valor_atacado}
+        {
+            'id': p.id,
+            'nome': p.nome,
+            'quantidade': p.quantidade,
+            'valor_custo': getattr(p, 'valor_custo', 0.0),
+            'valor_varejo': p.valor_varejo,
+            'valor_atacado': p.valor_atacado,
+            'total_estoque': round((getattr(p, 'valor_custo', 0.0) or 0.0) * (p.quantidade or 0), 2)
+        }
         for p in produtos
     ])
 
@@ -1030,13 +1067,18 @@ def get_vendas():
         'produtos': [{
             'nome': iv.nome_produto or (iv.produto.nome if iv.produto else 'Produto removido'),
             'quantidade': iv.quantidade,
-            'valor_unitario': iv.valor_unitario
+            'valor_unitario': iv.valor_unitario,
+            'valor_custo': getattr(iv.produto, 'valor_custo', 0.0) if iv.produto else 0.0
         } for iv in v.produtos_vendidos],
         'pagamentos': [{
             'tipo_pagamento': p.tipo_pagamento,
             'valor': p.valor,
             'parcelas': p.parcelas
-        } for p in v.pagamentos]
+        } for p in v.pagamentos],
+        'lucro': sum([
+            (iv.valor_unitario - (getattr(iv.produto, 'valor_custo', 0.0) if iv.produto else 0.0)) * iv.quantidade
+            for iv in v.produtos_vendidos
+        ])
     } for v in vendas])
 
 @app.route('/api/vendas/produtos/<int:venda_id>')
@@ -1057,76 +1099,138 @@ def get_produtos_venda(venda_id):
 # Relatório Excel
 @app.route('/api/relatorio/<data>')
 def gerar_relatorio(data):
+    print(f"[RELATÓRIO] Iniciando geração de relatório para data: {data}")
+    
     try:
         data_relatorio = datetime.strptime(data, '%Y-%m-%d').date()
-    except:
-        return jsonify({'error': 'Data inválida'})
+        print(f"[RELATÓRIO] Data convertida: {data_relatorio}")
+    except ValueError as e:
+        print(f"[RELATÓRIO] Erro na conversão da data: {e}")
+        return jsonify({'error': 'Data inválida'}), 400
     
-    vendas = Venda.query.filter(
-        db.func.date(Venda.data_venda) == data_relatorio
-    ).order_by(Venda.data_venda).all()
-    
-    # Criar planilha Excel
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    if ws is not None:
-        ws.title = f"Relatório {data_relatorio.strftime('%d/%m/%Y')}"
+    try:
+        vendas = Venda.query.filter(
+            db.func.date(Venda.data_venda) == data_relatorio
+        ).order_by(Venda.data_venda).all()
         
-        # Cabeçalhos
-        headers = ['Horário', 'Valor', 'Produto(s)', 'Métodos de Pagamento', 'Cliente']
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal='center')
+        print(f"[RELATÓRIO] Encontradas {len(vendas)} vendas para a data")
         
-        # Dados
-        row = 2
-        for venda in vendas:
-            # Preparar lista de produtos
-            produtos_str = []
-            for item in venda.produtos_vendidos:
-                produtos_str.append(f"{item.produto.nome} ({item.quantidade})")
+        # Criar planilha Excel
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        if ws is not None:
+            # Usar formato de data sem caracteres especiais para o título da planilha
+            titulo_planilha = f"Relatorio {data_relatorio.strftime('%d-%m-%Y')}"
+            titulo_limpo = limpar_nome_planilha(titulo_planilha)
+            ws.title = titulo_limpo
+            print(f"[RELATÓRIO] Título da planilha definido como: '{titulo_limpo}'")
             
-            # Preparar métodos de pagamento
-            pagamentos_str = []
-            for pagamento in venda.pagamentos:
-                if pagamento.tipo_pagamento == 'Cartão de Crédito' and pagamento.parcelas > 1:
-                    pagamentos_str.append(f"{pagamento.tipo_pagamento} ({pagamento.parcelas}x) - R$ {pagamento.valor:.2f}")
-                else:
-                    pagamentos_str.append(f"{pagamento.tipo_pagamento} - R$ {pagamento.valor:.2f}")
+            # Cabeçalhos
+            headers = ['Horário', 'Valor', 'Produto(s)', 'Métodos de Pagamento', 'Cliente', 'Lucro']
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
             
-            ws.cell(row=row, column=1, value=venda.data_venda.strftime('%d/%m/%Y %H:%M'))
-            ws.cell(row=row, column=2, value=f"R$ {venda.valor_total:.2f}")
-            ws.cell(row=row, column=3, value=", ".join(produtos_str))
-            ws.cell(row=row, column=4, value=", ".join(pagamentos_str))
-            ws.cell(row=row, column=5, value=venda.cliente or '')
-            row += 1
-        
-        # Ajustar largura das colunas
-        for i, column in enumerate(ws.columns):
-            max_length = 0
-            column_letter = get_column_letter(i + 1)
-            
-            for cell in column:
+            # Dados
+            row = 2
+            for venda in vendas:
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            ws.column_dimensions[column_letter].width = adjusted_width
-    
-    # Salvar em buffer
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    
-    return send_file(
-        output,
-        as_attachment=True,
-        download_name=f"relatorio_vendas_{data_relatorio.strftime('%d_%m_%Y')}.xlsx",
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
+                    # Preparar lista de produtos
+                    produtos_str = []
+                    lucro_total = 0
+                    for item in venda.produtos_vendidos:
+                        # Usar o nome salvo no momento da venda ou tentar buscar do produto
+                        nome_produto = item.nome_produto or (item.produto.nome if item.produto else 'Produto removido')
+                        produtos_str.append(f"{nome_produto} ({item.quantidade})")
+                        
+                        # Calcular lucro do item
+                        valor_custo = getattr(item.produto, 'valor_custo', 0.0) if item.produto else 0.0
+                        lucro_item = (item.valor_unitario - valor_custo) * item.quantidade
+                        lucro_total += lucro_item
+                    
+                    # Preparar métodos de pagamento
+                    pagamentos_str = []
+                    for pagamento in venda.pagamentos:
+                        if pagamento.tipo_pagamento == 'Cartão de Crédito' and pagamento.parcelas > 1:
+                            pagamentos_str.append(f"{pagamento.tipo_pagamento} ({pagamento.parcelas}x) - R$ {pagamento.valor:.2f}")
+                        else:
+                            pagamentos_str.append(f"{pagamento.tipo_pagamento} - R$ {pagamento.valor:.2f}")
+                    
+                    ws.cell(row=row, column=1, value=venda.data_venda.strftime('%d/%m/%Y %H:%M'))
+                    ws.cell(row=row, column=2, value=f"R$ {venda.valor_total:.2f}")
+                    ws.cell(row=row, column=3, value=", ".join(produtos_str))
+                    ws.cell(row=row, column=4, value=", ".join(pagamentos_str))
+                    ws.cell(row=row, column=5, value=venda.cliente or '')
+                    ws.cell(row=row, column=6, value=f"R$ {lucro_total:.2f}")
+                    row += 1
+                except Exception as e:
+                    print(f"[RELATÓRIO] Erro ao processar venda {venda.id}: {e}")
+                    continue
+            
+            # Adicionar linha de totalização
+            if row > 2:  # Se há dados no relatório
+                # Calcular totais
+                total_vendas = sum(v.valor_total for v in vendas)
+                total_lucro = 0
+                for venda in vendas:
+                    for item in venda.produtos_vendidos:
+                        valor_custo = getattr(item.produto, 'valor_custo', 0.0) if item.produto else 0.0
+                        lucro_item = (item.valor_unitario - valor_custo) * item.quantidade
+                        total_lucro += lucro_item
+                
+                # Linha em branco
+                row += 1
+                
+                # Linha de totais
+                ws.cell(row=row, column=1, value="TOTAIS:")
+                ws.cell(row=row, column=2, value=f"R$ {total_vendas:.2f}")
+                ws.cell(row=row, column=6, value=f"R$ {total_lucro:.2f}")
+                
+                # Formatar linha de totais
+                for col in range(1, 7):
+                    cell = ws.cell(row=row, column=col)
+                    cell.font = Font(bold=True)
+                    cell.alignment = Alignment(horizontal='center')
+                
+                print(f"[RELATÓRIO] Total de vendas: R$ {total_vendas:.2f}")
+                print(f"[RELATÓRIO] Total de lucro: R$ {total_lucro:.2f}")
+            
+            # Ajustar largura das colunas
+            for i, column in enumerate(ws.columns):
+                max_length = 0
+                column_letter = get_column_letter(i + 1)
+                
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+        
+        print(f"[RELATÓRIO] Planilha criada com {row-2} linhas de dados")
+        
+        # Salvar em buffer
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        print(f"[RELATÓRIO] Arquivo salvo no buffer, tamanho: {len(output.getvalue())} bytes")
+        
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"relatorio_vendas_{data_relatorio.strftime('%d_%m_%Y')}.xlsx",
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        print(f"[RELATÓRIO] Erro ao gerar relatório: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Erro interno ao gerar relatório'}), 500
 
 # APIs para Saídas
 
@@ -1373,6 +1477,54 @@ def definir_valor_inicial():
     db.session.commit()
     
     return jsonify({'success': True})
+
+@app.route('/api/estatisticas/valor-total-estoque')
+def get_valor_total_estoque():
+    """Retorna o valor total do estoque baseado no valor de custo"""
+    produtos = Produto.query.all()
+    valor_total = sum((getattr(p, 'valor_custo', 0.0) or 0.0) * (p.quantidade or 0) for p in produtos)
+    return jsonify({'valor_total_estoque': round(valor_total, 2)})
+
+@app.route('/api/estatisticas/faturamento-liquido-diario')
+def get_faturamento_liquido_diario():
+    """Retorna o faturamento líquido do dia (receita - custos)"""
+    data_hoje = date.today()
+    
+    # Buscar vendas do dia
+    vendas_do_dia = Venda.query.filter(
+        db.func.date(Venda.data_venda) == data_hoje
+    ).all()
+    
+    # IDs de vendas que são crediário (não entram no caixa diário)
+    vendas_crediario_ids = set(c.venda_id for c in Crediario.query.all())
+    
+    # Calcular receita total do dia (apenas vendas simples)
+    receita_total = sum(venda.valor_total for venda in vendas_do_dia if venda.id not in vendas_crediario_ids)
+    
+    # Adicionar pagamentos de crediário recebidos hoje
+    pagamentos_crediario = PagamentoCrediario.query.filter(
+        db.func.date(PagamentoCrediario.data_pagamento) == data_hoje,
+        ~PagamentoCrediario.observacoes.contains('Pagamento com crédito na loja')
+    ).all()
+    receita_total += sum(p.valor_pago for p in pagamentos_crediario)
+    
+    # Calcular custos dos produtos vendidos hoje
+    custos_total = 0
+    for venda in vendas_do_dia:
+        for item in venda.produtos_vendidos:
+            produto = Produto.query.get(item.produto_id)
+            if produto:
+                valor_custo = getattr(produto, 'valor_custo', 0.0) or 0.0
+                custos_total += valor_custo * item.quantidade
+    
+    # Calcular faturamento líquido
+    faturamento_liquido = receita_total - custos_total
+    
+    return jsonify({
+        'faturamento_liquido': round(faturamento_liquido, 2),
+        'receita_total': round(receita_total, 2),
+        'custos_total': round(custos_total, 2)
+    })
 
 if __name__ == '__main__':
     app.run(debug=True) 

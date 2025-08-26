@@ -75,6 +75,18 @@
                             <small class="text-muted">Baixo Estoque</small>
                         </div>
                     </div>
+                    <div class="col-6 mb-3">
+                        <div class="text-center">
+                            <h4 id="valor-total-estoque" class="text-info">R$ 0,00</h4>
+                            <small class="text-muted">Valor Total Estoque</small>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="text-center">
+                            <h4 id="faturamento-liquido" class="text-success">R$ 0,00</h4>
+                            <small class="text-muted">Faturamento Líquido Diário</small>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -147,7 +159,7 @@
             <div class="card-header bg-warning text-white">
                 <h5 class="card-title mb-0">
                     <i class="fas fa-list me-2"></i>
-                    Últimas Vendas (Últimos 7 dias)
+                    Últimas Vendas (Mês Atual)
                 </h5>
             </div>
             <div class="card-body">
@@ -159,12 +171,13 @@
                                 <th>Cliente</th>
                                 <th>Produtos</th>
                                 <th>Valor</th>
+                                <th>Lucro</th>
                                 <th>Pagamento</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td colspan="5" class="text-center text-muted">
+                                <td colspan="6" class="text-center text-muted">
                                     <i class="fas fa-spinner fa-spin me-2"></i>
                                     Carregando vendas...
                                 </td>
@@ -261,20 +274,30 @@ function carregarEstatisticas() {
             $('#total-crediario').text('R$ ' + totalCrediario.toFixed(2).replace('.', ','));
         });
     });
+    
+    // Carregar valor total do estoque
+    $.get('/api/estatisticas/valor-total-estoque', function(data) {
+        $('#valor-total-estoque').text('R$ ' + (data.valor_total_estoque || 0).toFixed(2).replace('.', ','));
+    });
+    
+    // Carregar faturamento líquido diário
+    $.get('/api/estatisticas/faturamento-liquido-diario', function(data) {
+        $('#faturamento-liquido').text('R$ ' + (data.faturamento_liquido || 0).toFixed(2).replace('.', ','));
+    });
 }
 
 function carregarUltimasVendas() {
     $.get('/api/vendas', function(vendas) {
-        // Filtrar vendas dos últimos 7 dias
+        // Filtrar vendas do mês atual
         const hoje = new Date();
-        const seteDiasAtras = new Date(hoje.getTime() - (7 * 24 * 60 * 60 * 1000));
+        const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
         
-        const vendasRecentes = vendas.filter(venda => {
+        const vendasDoMes = vendas.filter(venda => {
             const dataVenda = new Date(venda.data_venda.split(' ')[0].split('/').reverse().join('-'));
-            return dataVenda >= seteDiasAtras;
+            return dataVenda >= primeiroDiaMes;
         });
         
-        renderizarUltimasVendas(vendasRecentes);
+        renderizarUltimasVendas(vendasDoMes);
     });
 }
 
@@ -282,7 +305,7 @@ function renderizarUltimasVendas(vendas) {
     const tbody = $('#tabela-ultimas-vendas tbody');
     
     if (vendas.length === 0) {
-        tbody.html('<tr><td colspan="5" class="text-center text-muted">Nenhuma venda nos últimos 7 dias</td></tr>');
+        tbody.html('<tr><td colspan="6" class="text-center text-muted">Nenhuma venda no mês atual</td></tr>');
         return;
     }
     
@@ -304,12 +327,15 @@ function renderizarUltimasVendas(vendas) {
             pagamentosStr = 'N/A';
         }
         
+        const classeLucro = venda.lucro >= 0 ? 'text-success' : 'text-danger';
+        
         html += `
             <tr>
                 <td><small>${venda.data_venda}</small></td>
                 <td>${venda.cliente || '-'}</td>
                 <td><small>${produtos}</small></td>
                 <td><strong class="text-success">R$ ${venda.valor_total.toFixed(2).replace('.', ',')}</strong></td>
+                <td><strong class="${classeLucro}">R$ ${venda.lucro.toFixed(2).replace('.', ',')}</strong></td>
                 <td><span class="badge bg-info">${pagamentosStr}</span></td>
             </tr>
         `;
@@ -331,20 +357,70 @@ function gerarRelatorio() {
     btn.html('<i class="fas fa-spinner fa-spin me-2"></i>Gerando...');
     btn.prop('disabled', true);
     
-    // Fazer download do arquivo
-    const link = document.createElement('a');
-    link.href = `/api/relatorio/${data}`;
-    link.download = `relatorio_vendas_${data.replace(/-/g, '_')}.xlsx`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    // Restaurar botão
-    setTimeout(function() {
+    // Verificar se há vendas na data selecionada
+    $.get('/api/vendas', function(vendas) {
+        const dataSelecionada = new Date(data);
+        const vendasDoDia = vendas.filter(venda => {
+            const dataVenda = new Date(venda.data_venda.split(' ')[0].split('/').reverse().join('-'));
+            return dataVenda.toDateString() === dataSelecionada.toDateString();
+        });
+        
+        if (vendasDoDia.length === 0) {
+            mostrarAlerta('Não há vendas registradas para a data selecionada!', 'warning');
+            btn.html(textoOriginal);
+            btn.prop('disabled', false);
+            return;
+        }
+        
+        // Fazer download do arquivo
+        const link = document.createElement('a');
+        link.href = `/api/relatorio/${data}`;
+        link.download = `relatorio_vendas_${data.replace(/-/g, '_')}.xlsx`;
+        
+        // Adicionar tratamento de erro
+        link.onerror = function() {
+            mostrarAlerta('Erro ao gerar o relatório. Tente novamente!', 'danger');
+            btn.html(textoOriginal);
+            btn.prop('disabled', false);
+        };
+        
+        // Verificar se a API retorna erro antes de tentar download
+        fetch(`/api/relatorio/${data}`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Erro desconhecido');
+                    });
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // Criar URL do blob e fazer download
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `relatorio_vendas_${data.replace(/-/g, '_')}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                // Restaurar botão
+                btn.html(textoOriginal);
+                btn.prop('disabled', false);
+                mostrarAlerta('Relatório gerado com sucesso!', 'success');
+            })
+            .catch(error => {
+                console.error('Erro ao gerar relatório:', error);
+                mostrarAlerta(`Erro ao gerar relatório: ${error.message}`, 'danger');
+                btn.html(textoOriginal);
+                btn.prop('disabled', false);
+            });
+    }).fail(function() {
+        mostrarAlerta('Erro ao verificar vendas. Tente novamente!', 'danger');
         btn.html(textoOriginal);
         btn.prop('disabled', false);
-        mostrarAlerta('Relatório gerado com sucesso!', 'success');
-    }, 1000);
+    });
 }
 
 function mostrarAlerta(mensagem, tipo) {

@@ -32,6 +32,10 @@
                         <input type="number" class="form-control" id="quantidade" name="quantidade" min="0" required>
                     </div>
                     <div class="mb-3">
+                        <label for="valor_custo" class="form-label">Valor de Custo (R$)</label>
+                        <input type="number" class="form-control" id="valor_custo" name="valor_custo" min="0" step="0.01" required>
+                    </div>
+                    <div class="mb-3">
                         <label for="valor_varejo" class="form-label">Valor de Varejo (R$)</label>
                         <input type="number" class="form-control" id="valor_varejo" name="valor_varejo" min="0" step="0.01" required>
                     </div>
@@ -77,16 +81,18 @@
                         <thead>
                             <tr>
                                 <th>Produto</th>
-                                <th>Quantidade</th>
-                                <th>Valor Varejo</th>
-                                <th>Valor Atacado</th>
-                                <th>Compatibilidade</th>
+                                <th>QTD</th>
+                                <th>Valor de Custo</th>
+                                <th>Valor de Varejo</th>
+                                <th>Valor de Atacado</th>
+                                <th>Valor em Estoque</th>
+                                <th>Compativel</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td colspan="5" class="text-center text-muted">
+                                <td colspan="8" class="text-center text-muted">
                                     <i class="fas fa-spinner fa-spin me-2"></i>
                                     Carregando produtos...
                                 </td>
@@ -120,6 +126,10 @@
                     <div class="mb-3">
                         <label for="edit-quantidade" class="form-label">Quantidade</label>
                         <input type="number" class="form-control" id="edit-quantidade" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-valor_custo" class="form-label">Valor de Custo (R$)</label>
+                        <input type="number" class="form-control" id="edit-valor_custo" min="0" step="0.01" required>
                     </div>
                     <div class="mb-3">
                         <label for="edit-valor_varejo" class="form-label">Valor de Varejo (R$)</label>
@@ -189,7 +199,7 @@ function renderizarProdutos(produtosParaRenderizar) {
     const tbody = $('#tabela-produtos tbody');
     
     if (produtosParaRenderizar.length === 0) {
-        tbody.html('<tr><td colspan="5" class="text-center text-muted">Nenhum produto encontrado</td></tr>');
+        tbody.html('<tr><td colspan="8" class="text-center text-muted">Nenhum produto encontrado</td></tr>');
         return;
     }
     
@@ -200,8 +210,10 @@ function renderizarProdutos(produtosParaRenderizar) {
             <tr>
                 <td><strong>${produto.nome}</strong></td>
                 <td class="${classeQuantidade}"><strong>${produto.quantidade}</strong></td>
+                <td>R$ ${(produto.valor_custo || 0).toFixed(2).replace('.', ',')}</td>
                 <td>R$ ${produto.valor_varejo.toFixed(2).replace('.', ',')}</td>
                 <td>R$ ${produto.valor_atacado.toFixed(2).replace('.', ',')}</td>
+                <td>R$ ${(produto.total_estoque || ((produto.valor_custo||0) * (produto.quantidade||0))).toFixed(2).replace('.', ',')}</td>
                 <td><small class="text-muted">${produto.compatibilidade || 'N/A'}</small></td>
                 <td>
                     <button class="btn btn-sm btn-warning me-1" onclick="editarProduto(${produto.id})">
@@ -247,6 +259,7 @@ function adicionarProduto() {
     const dados = {
         nome: $('#nome').val(),
         quantidade: parseInt($('#quantidade').val()),
+        valor_custo: parseFloat($('#valor_custo').val()),
         valor_varejo: parseFloat($('#valor_varejo').val()),
         valor_atacado: parseFloat($('#valor_atacado').val()),
         compatibilidade: $('#compatibilidade').val()
@@ -277,6 +290,7 @@ function editarProduto(id) {
     $('#edit-id').val(produto.id);
     $('#edit-nome').val(produto.nome);
     $('#edit-quantidade').val(produto.quantidade);
+    $('#edit-valor_custo').val(produto.valor_custo || 0);
     $('#edit-valor_varejo').val(produto.valor_varejo);
     $('#edit-valor_atacado').val(produto.valor_atacado);
     $('#edit-compatibilidade').val(produto.compatibilidade);
@@ -289,6 +303,7 @@ function salvarEdicao() {
     const dados = {
         nome: $('#edit-nome').val(),
         quantidade: parseInt($('#edit-quantidade').val()),
+        valor_custo: parseFloat($('#edit-valor_custo').val()),
         valor_varejo: parseFloat($('#edit-valor_varejo').val()),
         valor_atacado: parseFloat($('#edit-valor_atacado').val()),
         compatibilidade: $('#edit-compatibilidade').val()
