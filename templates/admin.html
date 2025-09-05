@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}Administração - Sistema de Estoque{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-users-cog me-2"></i>
+                    Gerenciamento de Usuários
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalUsuario">
+                            <i class="fas fa-plus me-2"></i>Novo Usuário
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped" id="tabelaUsuarios">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Usuário</th>
+                                <th>Tipo</th>
+                                <th>Status</th>
+                                <th>Banco de Dados</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dados serão carregados via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para criar/editar usuário -->
+<div class="modal fade" id="modalUsuario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Novo Usuário</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formUsuario">
+                    <input type="hidden" id="usuarioId">
+                    
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Usuário *</label>
+                        <input type="text" class="form-control" id="username" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Senha *</label>
+                        <input type="password" class="form-control" id="password" required>
+                        <small class="text-muted">Deixe em branco para manter a senha atual (ao editar)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Tipo de Usuário *</label>
+                        <select class="form-select" id="role" required>
+                            <option value="cliente">Cliente</option>
+                            <option value="admin">Administrador</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="ativo" checked>
+                            <label class="form-check-label" for="ativo">
+                                Usuário Ativo
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnSalvar">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmação -->
+<div class="modal fade" id="modalConfirmacao" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar Ação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmacaoMensagem"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="btnConfirmar">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let usuarios = [];
+let acaoConfirmacao = null;
+
+$(document).ready(function() {
+    carregarUsuarios();
+    
+    // Eventos do modal
+    $('#modalUsuario').on('show.bs.modal', function(e) {
+        const button = $(e.relatedTarget);
+        const usuarioId = button.data('id');
+        
+        if (usuarioId) {
+            // Modo edição
+            const usuario = usuarios.find(u => u.id == usuarioId);
+            if (usuario) {
+                $('#modalTitle').text('Editar Usuário');
+                $('#usuarioId').val(usuario.id);
+                $('#username').val(usuario.username);
+                $('#password').val('').prop('required', false);
+                $('#role').val(usuario.role);
+                $('#ativo').prop('checked', usuario.ativo);
+            }
+        } else {
+            // Modo criação
+            $('#modalTitle').text('Novo Usuário');
+            $('#formUsuario')[0].reset();
+            $('#usuarioId').val('');
+            $('#password').prop('required', true);
+        }
+    });
+    
+    // Salvar usuário
+    $('#btnSalvar').on('click', function() {
+        const formData = {
+            username: $('#username').val().trim(),
+            password: $('#password').val(),
+            role: $('#role').val(),
+            ativo: $('#ativo').is(':checked')
+        };
+        
+        if (!formData.username) {
+            alert('Usuário é obrigatório');
+            return;
+        }
+        
+        if (!$('#usuarioId').val() && !formData.password) {
+            alert('Senha é obrigatória para novos usuários');
+            return;
+        }
+        
+        const usuarioId = $('#usuarioId').val();
+        const url = usuarioId ? `/admin/usuarios/${usuarioId}` : '/admin/usuarios';
+        const method = usuarioId ? 'PUT' : 'POST';
+        
+        $.ajax({
+            url: url,
+            method: method,
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(data) {
+                if (data.success) {
+                    $('#modalUsuario').modal('hide');
+                    carregarUsuarios();
+                    alert(usuarioId ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
+                } else {
+                    alert(data.error || 'Erro ao salvar usuário');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Erro no servidor';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                }
+                alert(errorMsg);
+            }
+        });
+    });
+    
+    // Confirmação de ações
+    $('#btnConfirmar').on('click', function() {
+        if (acaoConfirmacao) {
+            acaoConfirmacao();
+            $('#modalConfirmacao').modal('hide');
+        }
+    });
+});
+
+function carregarUsuarios() {
+    $.get('/admin/usuarios')
+        .done(function(data) {
+            usuarios = data;
+            renderizarTabela();
+        })
+        .fail(function() {
+            alert('Erro ao carregar usuários');
+        });
+}
+
+function renderizarTabela() {
+    const tbody = $('#tabelaUsuarios tbody');
+    tbody.empty();
+    
+    usuarios.forEach(function(usuario) {
+        const tr = $('<tr>');
+        tr.append(`<td>${usuario.id}</td>`);
+        tr.append(`<td>${usuario.username}</td>`);
+        tr.append(`<td><span class="badge bg-${usuario.role === 'admin' ? 'danger' : 'primary'}">${usuario.role}</span></td>`);
+        tr.append(`<td><span class="badge bg-${usuario.ativo ? 'success' : 'secondary'}">${usuario.ativo ? 'Ativo' : 'Inativo'}</span></td>`);
+        tr.append(`<td><small class="text-muted">${usuario.db_filename || 'N/A'}</small></td>`);
+        
+        const acoes = $('<td>');
+        
+        // Botão editar
+        acoes.append(`
+            <button class="btn btn-sm btn-outline-primary me-1" 
+                    data-bs-toggle="modal" data-bs-target="#modalUsuario" 
+                    data-id="${usuario.id}" title="Editar">
+                <i class="fas fa-edit"></i>
+            </button>
+        `);
+        
+        // Botão bloquear/desbloquear
+        const btnStatus = usuario.ativo ? 
+            `<button class="btn btn-sm btn-outline-warning me-1" onclick="toggleStatus(${usuario.id})" title="Bloquear">
+                <i class="fas fa-ban"></i>
+            </button>` :
+            `<button class="btn btn-sm btn-outline-success me-1" onclick="toggleStatus(${usuario.id})" title="Desbloquear">
+                <i class="fas fa-check"></i>
+            </button>`;
+        acoes.append(btnStatus);
+        
+        // Botão remover (não permitir remover o próprio usuário)
+        if (usuario.id != {{ session.get('user_id', 0) }}) {
+            acoes.append(`
+                <button class="btn btn-sm btn-outline-danger" onclick="removerUsuario(${usuario.id})" title="Remover">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `);
+        }
+        
+        tr.append(acoes);
+        tbody.append(tr);
+    });
+}
+
+function toggleStatus(usuarioId) {
+    const usuario = usuarios.find(u => u.id == usuarioId);
+    const acao = usuario.ativo ? 'bloquear' : 'desbloquear';
+    
+    $('#confirmacaoMensagem').text(`Deseja realmente ${acao} o usuário "${usuario.username}"?`);
+    acaoConfirmacao = function() {
+        $.ajax({
+            url: `/admin/usuarios/${usuarioId}`,
+            method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({ ativo: !usuario.ativo }),
+            success: function(data) {
+                if (data.success) {
+                    carregarUsuarios();
+                    alert(`Usuário ${acao}do com sucesso!`);
+                } else {
+                    alert(data.error || 'Erro ao alterar status');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Erro no servidor';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                }
+                alert(errorMsg);
+            }
+        });
+    };
+    
+    $('#modalConfirmacao').modal('show');
+}
+
+function removerUsuario(usuarioId) {
+    const usuario = usuarios.find(u => u.id == usuarioId);
+    
+    $('#confirmacaoMensagem').text(`Deseja realmente remover o usuário "${usuario.username}"? Esta ação não pode ser desfeita e removerá o banco de dados do cliente.`);
+    acaoConfirmacao = function() {
+        $.ajax({
+            url: `/admin/usuarios/${usuarioId}`,
+            method: 'DELETE',
+            success: function(data) {
+                if (data.success) {
+                    carregarUsuarios();
+                    alert('Usuário removido com sucesso!');
+                } else {
+                    alert(data.error || 'Erro ao remover usuário');
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Erro no servidor';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                }
+                alert(errorMsg);
+            }
+        });
+    };
+    
+    $('#modalConfirmacao').modal('show');
+}
+</script>
+{% endblock %}

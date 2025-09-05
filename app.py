@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, g
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from datetime import datetime, date
@@ -8,6 +8,8 @@ from openpyxl.utils import get_column_letter
 import os
 import io
 import re
+from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import create_engine
 
 def limpar_nome_planilha(nome):
     """Remove caracteres inválidos para nomes de planilhas Excel"""
@@ -21,6 +23,7 @@ def limpar_nome_planilha(nome):
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///estoque.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.secret_key = os.environ.get('APP_SECRET_KEY', 'change-this-in-production')
 db = SQLAlchemy(app)
 
 # Modelos do banco de dados
@@ -111,6 +114,22 @@ class Cliente(db.Model):
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
     observacoes = db.Column(db.Text)
     ativo = db.Column(db.Boolean, default=True)
+
+# Modelo de usuários e controle de acesso (no banco mestre)
+class Usuario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), default='cliente')  # 'admin' ou 'cliente'
+    ativo = db.Column(db.Boolean, default=True)
+    # Caminho do banco de dados exclusivo do cliente (para role == 'cliente')
+    db_filename = db.Column(db.String(255))
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
 # Modelo para crediário de atacadistas
 class Crediario(db.Model):
@@ -204,50 +223,304 @@ with app.app_context():
         except Exception as e2:
             print(f"Erro ao recriar banco de dados: {e2}")
 
+    # Criar usuário admin padrão se não existir
+    try:
+        if not Usuario.query.filter_by(username='admin').first():
+            admin_user = Usuario(username='admin', role='admin', ativo=True)
+            admin_user.set_password('admin')  # Altere após o primeiro login
+            db.session.add(admin_user)
+            db.session.commit()
+            print("Usuário admin padrão criado (login: admin / senha: admin).")
+    except Exception as e:
+        print(f"Falha ao criar usuário admin padrão: {e}")
+
+# ---------------------
+# Multi-tenant utilities
+# ---------------------
+
+# Guardar a query property original para cada modelo, para que possamos alternar dinamicamente por request
+_ORIGINAL_QUERY_PROPS = {}
+for _model in [
+    # Modelos de dados do cliente (tenant)
+    Produto, Venda, PagamentoVenda, ItemVenda, Devolucao, PremiacaoFuncionario,
+    AvariaProduto, CompraSuprimento, CaixaDiario, Cliente, Crediario,
+    PagamentoCrediario, DevolucaoCrediario, CreditoLoja
+]:
+    try:
+        _ORIGINAL_QUERY_PROPS[_model.__name__] = _model.query
+    except Exception:
+        pass
+
+TENANTS_DIR = os.path.join('var', 'app-instance', 'tenants')
+os.makedirs(TENANTS_DIR, exist_ok=True)
+
+def get_tenant_db_path(username: str) -> str:
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', username).lower()
+    return os.path.join(TENANTS_DIR, f"{safe_name}.db")
+
+def init_tenant_database(db_path: str):
+    try:
+        engine = create_engine(f"sqlite:///{db_path}")
+        # Criar somente tabelas de dados do tenant
+        db.Model.metadata.create_all(engine, tables=[
+            Produto.__table__, Venda.__table__, PagamentoVenda.__table__, ItemVenda.__table__,
+            Devolucao.__table__, PremiacaoFuncionario.__table__, AvariaProduto.__table__,
+            CompraSuprimento.__table__, CaixaDiario.__table__, Cliente.__table__,
+            Crediario.__table__, PagamentoCrediario.__table__, DevolucaoCrediario.__table__,
+            CreditoLoja.__table__
+        ])
+    except Exception as e:
+        print(f"Erro ao inicializar banco do tenant: {e}")
+
+@app.before_request
+def bind_tenant_session():
+    g.tenant_scoped_session = None
+    # Rotas de admin e autenticação usam o banco mestre
+    if request.path.startswith('/admin') or request.path.startswith('/login') or request.path.startswith('/logout'):
+        return
+
+    user_id = session.get('user_id')
+    if not user_id:
+        return
+    usuario = Usuario.query.get(user_id)
+    if not usuario or not usuario.ativo:
+        return
+    if usuario.role != 'admin':
+        # Cliente: associar models ao banco exclusivo
+        db_filename = usuario.db_filename or get_tenant_db_path(usuario.username)
+        if not os.path.exists(db_filename):
+            init_tenant_database(db_filename)
+        try:
+            engine = create_engine(f"sqlite:///{db_filename}")
+            # Mapear binds por modelo e criar uma sessão isolada para o request
+            binds = {
+                Produto: engine, Venda: engine, PagamentoVenda: engine, ItemVenda: engine,
+                Devolucao: engine, PremiacaoFuncionario: engine, AvariaProduto: engine,
+                CompraSuprimento: engine, CaixaDiario: engine, Cliente: engine,
+                Crediario: engine, PagamentoCrediario: engine, DevolucaoCrediario: engine,
+                CreditoLoja: engine
+            }
+            tenant_session = db.create_scoped_session(options={'binds': binds})
+            g.tenant_scoped_session = tenant_session
+            # Redirecionar Model.query para a sessão do tenant durante este request
+            for _model in binds.keys():
+                _model.query = tenant_session.query_property()
+        except Exception as e:
+            print(f"Erro ao vincular sessão do tenant: {e}")
+
+@app.teardown_request
+def unbind_tenant_session(exception=None):
+    # Restaurar query original ao final do request
+    if g.get('tenant_scoped_session') is not None:
+        try:
+            g.tenant_scoped_session.remove()
+        except Exception:
+            pass
+        for name, original_query in _ORIGINAL_QUERY_PROPS.items():
+            try:
+                globals()[name].query = original_query
+            except Exception:
+                pass
+
+# ---------------------
+# Autenticação básica
+# ---------------------
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Credenciais inválidas'}), 400
+    user = Usuario.query.filter_by(username=username).first()
+    if not user or not user.ativo or not user.check_password(password):
+        return jsonify({'success': False, 'error': 'Usuário ou senha incorretos'}), 401
+    session['user_id'] = user.id
+    session['role'] = user.role
+    return jsonify({'success': True, 'role': user.role})
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'success': True})
+
+@app.route('/me')
+def me():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'authenticated': False})
+    user = Usuario.query.get(user_id)
+    return jsonify({'authenticated': True, 'username': user.username, 'role': user.role, 'ativo': user.ativo})
+
+# ---------------------
+# Admin - gerenciamento de usuários/clientes
+# ---------------------
+
+def require_auth():
+    """Decorator para verificar se o usuário está autenticado"""
+    def decorator(f):
+        def wrapper(*args, **kwargs):
+            user_id = session.get('user_id')
+            if not user_id:
+                return redirect('/login')
+            user = Usuario.query.get(user_id)
+            if not user or not user.ativo:
+                return redirect('/login')
+            return f(*args, **kwargs)
+        wrapper.__name__ = f.__name__
+        return wrapper
+    return decorator
+
+def require_admin():
+    """Decorator para verificar se o usuário é admin"""
+    def decorator(f):
+        def wrapper(*args, **kwargs):
+            user_id = session.get('user_id')
+            if not user_id:
+                return redirect('/login')
+            user = Usuario.query.get(user_id)
+            if not user or not user.ativo or user.role != 'admin':
+                return redirect('/')
+            return f(*args, **kwargs)
+        wrapper.__name__ = f.__name__
+        return wrapper
+    return decorator
+
+@app.route('/admin/usuarios', methods=['GET'])
+@require_admin()
+def listar_usuarios():
+    usuarios = Usuario.query.order_by(Usuario.username).all()
+    return jsonify([
+        {
+            'id': u.id,
+            'username': u.username,
+            'role': u.role,
+            'ativo': u.ativo,
+            'db_filename': u.db_filename
+        } for u in usuarios
+    ])
+
+@app.route('/admin/usuarios', methods=['POST'])
+@require_admin()
+def criar_usuario():
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    role = data.get('role', 'cliente')
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'username e password são obrigatórios'}), 400
+    if Usuario.query.filter_by(username=username).first():
+        return jsonify({'success': False, 'error': 'Username já existe'}), 400
+    user = Usuario(username=username, role=role, ativo=True)
+    user.set_password(password)
+    # Criar banco por cliente se for cliente
+    if role != 'admin':
+        db_path = get_tenant_db_path(username)
+        user.db_filename = db_path
+        init_tenant_database(db_path)
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'success': True, 'id': user.id})
+
+@app.route('/admin/usuarios/<int:user_id>', methods=['PUT'])
+@require_admin()
+def atualizar_usuario(user_id):
+    user = Usuario.query.get_or_404(user_id)
+    data = request.json or {}
+    if 'password' in data and data['password']:
+        user.set_password(data['password'])
+    if 'ativo' in data:
+        user.ativo = bool(data['ativo'])
+    if 'role' in data:
+        user.role = data['role']
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/usuarios/<int:user_id>', methods=['DELETE'])
+@require_admin()
+def remover_usuario(user_id):
+    user = Usuario.query.get_or_404(user_id)
+    db_path = user.db_filename
+    db.session.delete(user)
+    db.session.commit()
+    # Opcional: remover o arquivo do banco do cliente
+    if db_path and os.path.exists(db_path):
+        try:
+            os.remove(db_path)
+        except Exception as e:
+            print(f"Falha ao remover banco do cliente: {e}")
+    return jsonify({'success': True})
+
 # Rotas principais
 @app.route('/')
+@require_auth()
 def index():
     return render_template('index.html')
 
+@app.route('/login')
+def login_page():
+    # Se já está logado, redirecionar para home
+    user_id = session.get('user_id')
+    if user_id:
+        user = Usuario.query.get(user_id)
+        if user and user.ativo:
+            return redirect('/')
+    return render_template('login.html')
+
 @app.route('/estoque')
+@require_auth()
 def estoque():
     produtos = Produto.query.all()
     return render_template('estoque.html', produtos=produtos)
 
 @app.route('/vendas')
+@require_auth()
 def vendas():
     vendas = Venda.query.order_by(Venda.data_venda.desc()).all()
     produtos = Produto.query.all()
     return render_template('vendas_simples.html', vendas=vendas, produtos=produtos)
 
 @app.route('/relatorios')
+@require_auth()
 def relatorios():
     return render_template('relatorios.html')
 
 @app.route('/saidas')
+@require_auth()
 def saidas():
     produtos = Produto.query.all()
     return render_template('saidas.html', produtos=produtos)
 
 @app.route('/teste')
+@require_auth()
 def teste():
     return render_template('teste_vendas.html')
 
 @app.route('/vendas-simples')
+@require_auth()
 def vendas_simples():
     return render_template('vendas_simples.html')
 
 @app.route('/clientes')
+@require_auth()
 def clientes():
     return render_template('clientes.html')
 
 @app.route('/vendas-atacadistas')
+@require_auth()
 def vendas_atacadistas():
     return render_template('vendas_atacadistas.html')
 
 @app.route('/pagamentos-crediarios')
+@require_auth()
 def pagamentos_crediarios():
     return render_template('pagamentos_crediarios.html')
+
+@app.route('/admin')
+@require_admin()
+def admin():
+    return render_template('admin.html')
 
 # API para produtos
 @app.route('/api/produtos', methods=['GET'])
@@ -1057,13 +1330,33 @@ def registrar_venda():
 
 @app.route('/api/vendas')
 def get_vendas():
-    vendas = Venda.query.order_by(Venda.data_venda.desc()).all()
+    # Filtrar apenas vendas simples (excluindo vendas para atacadistas)
+    vendas = []
+    todas_vendas = Venda.query.order_by(Venda.data_venda.desc()).all()
+    
+    for v in todas_vendas:
+        # Verificar se o cliente é um atacadista
+        if v.cliente:
+            cliente = Cliente.query.filter(
+                Cliente.nome == v.cliente,
+                Cliente.tipo == 'Atacadista'
+            ).first()
+            # Se for atacadista, pular esta venda
+            if cliente:
+                continue
+        
+        vendas.append(v)
+    
     return jsonify([{
         'id': v.id,
         'data_venda': v.data_venda.strftime('%d/%m/%Y %H:%M'),
         'valor_total': v.valor_total,
         'parcelas': v.parcelas,
         'cliente': v.cliente,
+        'status': getattr(v, 'status', 'Finalizada'),
+        'tem_devolucao': Devolucao.query.filter(
+            Devolucao.observacoes.contains(f"[DEVOLUÇÃO VENDA SIMPLES - Venda ID {v.id}]")
+        ).first() is not None,
         'produtos': [{
             'nome': iv.nome_produto or (iv.produto.nome if iv.produto else 'Produto removido'),
             'quantidade': iv.quantidade,
@@ -1086,6 +1379,15 @@ def get_produtos_venda(venda_id):
     venda = Venda.query.get_or_404(venda_id)
     produtos = []
     
+    # Verificar se já existe devolução para esta venda
+    devolucao_existente = Devolucao.query.filter(
+        Devolucao.observacoes.contains(f"[DEVOLUÇÃO VENDA SIMPLES - Venda ID {venda_id}]")
+    ).first()
+    
+    # Se já existe devolução, não retornar produtos
+    if devolucao_existente:
+        return jsonify([])
+    
     for item in venda.produtos_vendidos:
         produtos.append({
             'id': item.produto_id,
@@ -1095,6 +1397,105 @@ def get_produtos_venda(venda_id):
         })
     
     return jsonify(produtos)
+
+@app.route('/api/vendas/<int:venda_id>/devolver', methods=['POST'])
+def devolver_venda_simples(venda_id):
+    """API para devolver produtos de uma venda simples"""
+    venda = Venda.query.get_or_404(venda_id)
+    data = request.json
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados inválidos'}), 400
+    
+    produtos_devolvidos_json = data.get('produtos_devolvidos', '')
+    observacoes = data.get('observacoes', '')
+    
+    try:
+        produtos_devolvidos = []
+        if produtos_devolvidos_json:
+            import json
+            produtos_devolvidos = json.loads(produtos_devolvidos_json)
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Produtos devolvidos em formato inválido'}), 400
+
+    # Verificar se já existe devolução para esta venda
+    devolucao_existente = Devolucao.query.filter(
+        Devolucao.observacoes.contains(f"[DEVOLUÇÃO VENDA SIMPLES - Venda ID {venda_id}]")
+    ).first()
+    
+    if devolucao_existente:
+        return jsonify({'success': False, 'error': 'Esta venda já possui devolução registrada'}), 400
+
+    # Calcular valor devolvido com base nos produtos devolvidos
+    valor_devolvido = 0
+    for prod in produtos_devolvidos:
+        valor_devolvido += prod.get('valor_unitario', 0) * prod.get('quantidade', 0)
+
+    # Devolver produtos ao estoque
+    for prod in produtos_devolvidos:
+        produto = Produto.query.get(prod['id'])
+        if produto:
+            produto.quantidade += prod['quantidade']
+
+    # Registrar a devolução
+    devolucao = Devolucao(
+        valor=valor_devolvido,
+        produtos_devolvidos=produtos_devolvidos_json,
+        observacoes=f"[DEVOLUÇÃO VENDA SIMPLES - Venda ID {venda_id}] " + observacoes,
+        retornar_estoque=True
+    )
+    db.session.add(devolucao)
+    
+    # Verificar se todos os produtos foram devolvidos
+    def _todos_produtos_devolvidos(venda, nova_devolucao):
+        # Soma quantidades vendidas
+        vendidos = {item.produto_id: item.quantidade for item in venda.produtos_vendidos}
+        # Soma quantidades devolvidas (apenas a devolução atual)
+        devolvidos = {}
+        for p in nova_devolucao:
+            devolvidos[p['id']] = devolvidos.get(p['id'], 0) + p['quantidade']
+        # Verifica se todos os produtos vendidos foram totalmente devolvidos
+        for pid, qtd in vendidos.items():
+            if devolvidos.get(pid, 0) < qtd:
+                return False
+        return True
+
+    todos_devolvidos = _todos_produtos_devolvidos(venda, produtos_devolvidos)
+    
+    # Adicionar coluna status se não existir
+    try:
+        db.session.execute(text("ALTER TABLE venda ADD COLUMN status VARCHAR(20) DEFAULT 'Finalizada'"))
+    except:
+        pass  # Coluna já existe
+    
+    # Atualizar status da venda
+    if todos_devolvidos:
+        venda.status = 'Retorno'
+    else:
+        venda.status = 'Finalizada'
+    
+    # Adicionar observação sobre a devolução na venda
+    observacao_venda = f"Devolução em {datetime.now().strftime('%d/%m/%Y %H:%M')}: {observacoes}"
+    if hasattr(venda, 'observacoes') and venda.observacoes:
+        venda.observacoes += f"\n{observacao_venda}"
+    else:
+        # Se não existir coluna observacoes, criar uma nova
+        try:
+            db.session.execute(text("ALTER TABLE venda ADD COLUMN observacoes TEXT"))
+            venda.observacoes = observacao_venda
+        except:
+            # Coluna já existe ou não pode ser criada
+            pass
+    
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'valor_devolvido': valor_devolvido,
+        'devolucao_id': devolucao.id,
+        'todos_devolvidos': todos_devolvidos,
+        'status_venda': venda.status
+    })
 
 # Relatório Excel
 @app.route('/api/relatorio/<data>')
@@ -1525,6 +1926,47 @@ def get_faturamento_liquido_diario():
         'receita_total': round(receita_total, 2),
         'custos_total': round(custos_total, 2)
     })
+
+# Novo: total de pagamentos de crediário no mês para crediários com status "Pago"
+@app.route('/api/estatisticas/pagamentos-crediario-mes')
+def get_pagamentos_crediario_mes():
+    try:
+        # Parâmetros opcionais ano/mes, padrão: mês atual
+        ano = request.args.get('ano', type=int)
+        mes = request.args.get('mes', type=int)
+        hoje = date.today()
+        if not ano:
+            ano = hoje.year
+        if not mes:
+            mes = hoje.month
+
+        # Intervalo do mês
+        from datetime import timedelta
+        primeiro_dia = date(ano, mes, 1)
+        if mes == 12:
+            proximo_mes_primeiro_dia = date(ano + 1, 1, 1)
+        else:
+            proximo_mes_primeiro_dia = date(ano, mes + 1, 1)
+
+        # Buscar pagamentos do mês e somar apenas de crediários com status Pago
+        pagamentos = PagamentoCrediario.query.filter(
+            db.func.date(PagamentoCrediario.data_pagamento) >= primeiro_dia,
+            db.func.date(PagamentoCrediario.data_pagamento) < proximo_mes_primeiro_dia
+        ).all()
+
+        total = 0.0
+        for p in pagamentos:
+            # Garantir que o crediário existe e está Pago
+            if p.crediario and p.crediario.status == 'Pago':
+                total += (p.valor_pago or 0.0)
+
+        return jsonify({
+            'ano': ano,
+            'mes': mes,
+            'total_pagamentos_crediario_pago': round(total, 2)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True) 

@@ -254,19 +254,11 @@ function carregarEstatisticas() {
             }
         });
         
-        // Buscar pagamentos de crediário do mês atual para somar ao total
-        $.get('/api/crediarios', function(crediarios) {
-            let totalPagamentosCrediario = 0;
-            crediarios.forEach(function(crediario) {
-                // Filtrar apenas pagamentos do mês atual
-                const pagamentosDoMes = crediario.pagamentos ? crediario.pagamentos.filter(p => {
-                    const dataPagamento = new Date(p.data_pagamento.split(' ')[0].split('/').reverse().join('-'));
-                    return dataPagamento >= primeiroDiaMes;
-                }) : [];
-                totalPagamentosCrediario += pagamentosDoMes.reduce((total, p) => total + p.valor_pago, 0);
-            });
-            totalCrediario += totalPagamentosCrediario;
-            
+        // Buscar total de pagamentos de crediário do mês (apenas crediários com status Pago)
+        const ano = hoje.getFullYear();
+        const mes = hoje.getMonth() + 1;
+        $.get(`/api/estatisticas/pagamentos-crediario-mes?ano=${ano}&mes=${mes}`, function(resp) {
+            totalCrediario += (resp.total_pagamentos_crediario_pago || 0);
             $('#total-especie').text('R$ ' + totalEspecie.toFixed(2).replace('.', ','));
             $('#total-pix').text('R$ ' + totalPix.toFixed(2).replace('.', ','));
             $('#total-debito').text('R$ ' + totalDebito.toFixed(2).replace('.', ','));

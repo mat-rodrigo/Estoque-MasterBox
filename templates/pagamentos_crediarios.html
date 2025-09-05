@@ -441,6 +441,15 @@ function limparBuscaAtacadista() {
 
 function carregarCrediariosAtacadista(clienteId) {
     $.get(`/api/crediarios/cliente/${clienteId}`, function(data) {
+        // Ordenar por data de criação (mais novos no topo)
+        data.sort(function(a, b) {
+            // datas no formato dd/mm/YYYY
+            function parsePtBr(d) {
+                const [dia, mes, ano] = (d || '01/01/1970').split('/').map(Number);
+                return new Date(ano, mes - 1, dia);
+            }
+            return parsePtBr(b.data_criacao) - parsePtBr(a.data_criacao);
+        });
         crediariosAtacadista = data;
         const container = $('#lista-crediarios');
         

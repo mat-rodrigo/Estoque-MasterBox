@@ -248,7 +248,7 @@
         <div class="container">
             <a class="navbar-brand" href="/">
                 <i class="fas fa-mobile-alt me-2"></i>
-                Master Box
+                OpenStock
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -290,9 +290,21 @@
                             <i class="fas fa-chart-bar me-1"></i> Relatórios
                         </a>
                     </li>
+                    {% if session.get('role') == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin">
+                            <i class="fas fa-users-cog me-1"></i> Administração
+                        </a>
+                    </li>
+                    {% endif %}
                     <li class="nav-item">
                         <button class="btn btn-outline-light ms-2" id="btn-dark-mode" title="Alternar Modo Escuro">
                             <i class="fas fa-moon" id="dark-mode-icon"></i>
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-outline-light ms-2" id="btn-logout" title="Sair">
+                            <i class="fas fa-sign-out-alt"></i>
                         </button>
                     </li>
                 </ul>
@@ -319,10 +331,23 @@
                 $('#dark-mode-icon').removeClass('fa-moon').addClass('fa-sun');
             }
             
-            // Evento do botão de modo escuro
-            $('#btn-dark-mode').on('click', function() {
-                toggleDarkMode();
-            });
+                    // Evento do botão de modo escuro
+        $('#btn-dark-mode').on('click', function() {
+            toggleDarkMode();
+        });
+        
+        // Evento do botão de logout
+        $('#btn-logout').on('click', function() {
+            if (confirm('Deseja realmente sair do sistema?')) {
+                $.post('/logout')
+                    .done(function() {
+                        window.location.href = '/login';
+                    })
+                    .fail(function() {
+                        alert('Erro ao fazer logout');
+                    });
+            }
+        });
         });
         
         function toggleDarkMode() {

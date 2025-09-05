@@ -115,7 +115,7 @@
             <div class="card-header bg-info text-white">
                 <h5 class="card-title mb-0">
                     <i class="fas fa-history me-2"></i>
-                    Histórico de Vendas
+                    Histórico de Vendas Simples
                 </h5>
             </div>
             <div class="card-body">
@@ -128,15 +128,16 @@
                                 <th>Produtos</th>
                                 <th>Valor</th>
                                 <th>Pagamento</th>
+                                <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td colspan="5" class="text-center text-muted">
-                                    <i class="fas fa-spinner fa-spin me-2"></i>
-                                    Carregando vendas...
-                                </td>
-                            </tr>
+                                                         <tr>
+                                 <td colspan="6" class="text-center text-muted">
+                                     <i class="fas fa-spinner fa-spin me-2"></i>
+                                     Carregando vendas...
+                                 </td>
+                             </tr>
                         </tbody>
                     </table>
                 </div>
@@ -369,6 +370,56 @@
     </div>
 </div>
 
+<!-- Modal de Devolução -->
+<div class="modal fade" id="modalDevolucao" tabindex="-1" aria-labelledby="modalDevolucaoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalDevolucaoLabel">
+                    <i class="fas fa-undo me-2"></i>
+                    Devolver Produtos
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6>Venda selecionada:</h6>
+                    <div class="alert alert-info">
+                        <strong>Cliente:</strong> <span id="cliente-devolucao">-</span><br>
+                        <strong>Data:</strong> <span id="data-devolucao">-</span><br>
+                        <strong>Valor Total:</strong> <span id="valor-total-devolucao">-</span>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>Produtos da Venda:</h6>
+                    <div id="produtos-devolucao" class="border rounded p-3">
+                        <!-- Produtos serão carregados aqui -->
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Observações da Devolução:</label>
+                    <textarea class="form-control" id="observacoes-devolucao" rows="3" placeholder="Motivo da devolução, condições, etc."></textarea>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Atenção:</strong> Os produtos devolvidos serão retornados ao estoque automaticamente.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-danger" onclick="confirmarDevolucao()">
+                    <i class="fas fa-undo me-2"></i>Confirmar Devolução
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -381,6 +432,7 @@ let totalVenda = 0;
 let descontoAplicado = 0;
 let tipoDesconto = 'percentual'; // 'percentual' ou 'valor-fixo'
 let produtoSelecionado = null;
+let vendaDevolucao = null; // Venda selecionada para devolução
 
 $(document).ready(function() {
     console.log('=== PÁGINA DE VENDAS SIMPLES CARREGADA ===');
@@ -1010,7 +1062,7 @@ function renderizarVendas() {
     
     if (vendas.length === 0) {
         console.log('Nenhuma venda encontrada');
-        tbody.html('<tr><td colspan="5" class="text-center text-muted">Nenhuma venda registrada</td></tr>');
+        tbody.html('<tr><td colspan="6" class="text-center text-muted">Nenhuma venda registrada</td></tr>');
         return;
     }
     
@@ -1033,6 +1085,9 @@ function renderizarVendas() {
             pagamentosStr = 'N/A';
         }
         
+        // Determinar se deve mostrar botão de devolução
+        const podeDevolver = !venda.tem_devolucao;
+        
         html += `
             <tr>
                 <td><small>${venda.data_venda}</small></td>
@@ -1040,6 +1095,16 @@ function renderizarVendas() {
                 <td><small>${produtos}</small></td>
                 <td><strong class="text-success">R$ ${venda.valor_total.toFixed(2).replace('.', ',')}</strong></td>
                 <td><span class="badge bg-info">${pagamentosStr}</span></td>
+                <td>
+                    ${podeDevolver ? 
+                        `<button type="button" class="btn btn-sm btn-outline-danger" onclick="abrirModalDevolucao(${venda.id})" title="Devolver produtos">
+                            <i class="fas fa-undo"></i>
+                        </button>` : 
+                        `<span class="badge bg-secondary" title="Venda já devolvida">
+                            <i class="fas fa-check"></i> DEV
+                        </span>`
+                    }
+                </td>
             </tr>
         `;
     });
@@ -1056,6 +1121,175 @@ function mostrarNotificacaoRecarregamento() {
     // Ocultar a notificação após 5 segundos
     setTimeout(function() {
         notificacao.fadeOut();
+    }, 5000);
+}
+
+// ===== FUNÇÕES DE DEVOLUÇÃO =====
+
+function abrirModalDevolucao(vendaId) {
+    vendaDevolucao = vendas.find(v => v.id === vendaId);
+    if (!vendaDevolucao) {
+        alert('Venda não encontrada!');
+        return;
+    }
+    
+    // Verificar se a venda já tem devolução
+    if (vendaDevolucao.tem_devolucao) {
+        alert('Esta venda já possui devolução registrada!');
+        return;
+    }
+    
+    // Preencher informações da venda
+    $('#cliente-devolucao').text(vendaDevolucao.cliente || 'Cliente não informado');
+    $('#data-devolucao').text(vendaDevolucao.data_venda);
+    $('#valor-total-devolucao').text('R$ ' + vendaDevolucao.valor_total.toFixed(2).replace('.', ','));
+    
+    // Carregar produtos da venda
+    carregarProdutosDevolucao(vendaId);
+    
+    // Limpar observações
+    $('#observacoes-devolucao').val('');
+    
+    $('#modalDevolucao').modal('show');
+}
+
+function carregarProdutosDevolucao(vendaId) {
+    $.get(`/api/vendas/produtos/${vendaId}`, function(produtos) {
+        const container = $('#produtos-devolucao');
+        
+        if (produtos.length === 0) {
+            container.html('<div class="alert alert-warning text-center">' +
+                '<i class="fas fa-exclamation-triangle me-2"></i>' +
+                '<strong>Esta venda já possui devolução registrada.</strong><br>' +
+                'Não é possível realizar nova devolução.' +
+                '</div>');
+            return;
+        }
+        
+        let html = '';
+        produtos.forEach(function(produto, index) {
+            html += `
+                <div class="form-check mb-2">
+                    <input class="form-check-input produto-devolucao-checkbox" type="checkbox" 
+                           value="${produto.id}" id="produto-${index}" 
+                           data-nome="${produto.nome}" 
+                           data-quantidade="${produto.quantidade}" 
+                           data-valor="${produto.valor_unitario}"
+                           onchange="atualizarProdutosDevolucao()">
+                    <label class="form-check-label" for="produto-${index}">
+                        <strong>${produto.nome}</strong><br>
+                        <small class="text-muted">
+                            Quantidade: ${produto.quantidade} | 
+                            Valor unitário: R$ ${produto.valor_unitario.toFixed(2).replace('.', ',')} | 
+                            Total: R$ ${(produto.quantidade * produto.valor_unitario).toFixed(2).replace('.', ',')}
+                        </small>
+                    </label>
+                </div>
+            `;
+        });
+        
+        container.html(html);
+    }).fail(function(xhr, status, error) {
+        console.error('Erro ao carregar produtos da venda:', error);
+        $('#produtos-devolucao').html('<p class="text-danger">Erro ao carregar produtos da venda.</p>');
+    });
+}
+
+function atualizarProdutosDevolucao() {
+    // Esta função pode ser usada para atualizar cálculos ou validações
+    // Por enquanto, apenas para compatibilidade
+}
+
+function confirmarDevolucao() {
+    if (!vendaDevolucao) {
+        alert('Nenhuma venda selecionada para devolução!');
+        return;
+    }
+    
+    // Coletar produtos selecionados para devolução
+    const produtosDevolvidos = [];
+    $('.produto-devolucao-checkbox:checked').each(function() {
+        const produto = {
+            id: parseInt($(this).val()),
+            nome: $(this).data('nome'),
+            quantidade: parseInt($(this).data('quantidade')),
+            valor_unitario: parseFloat($(this).data('valor'))
+        };
+        produtosDevolvidos.push(produto);
+    });
+    
+    if (produtosDevolvidos.length === 0) {
+        alert('Selecione pelo menos um produto para devolver!');
+        return;
+    }
+    
+    const observacoes = $('#observacoes-devolucao').val().trim();
+    
+    // Confirmar a devolução
+    if (!confirm(`Confirmar devolução de ${produtosDevolvidos.length} produto(s)?\n\nEsta ação não pode ser desfeita e os produtos serão retornados ao estoque.`)) {
+        return;
+    }
+    
+    // Enviar requisição de devolução
+    const dados = {
+        produtos_devolvidos: JSON.stringify(produtosDevolvidos),
+        observacoes: observacoes
+    };
+    
+    $.ajax({
+        url: `/api/vendas/${vendaDevolucao.id}/devolver`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(dados),
+        success: function(response) {
+            if (response.success) {
+                let mensagem = `Devolução realizada com sucesso!\n\n`;
+                mensagem += `Valor devolvido: R$ ${response.valor_devolvido.toFixed(2).replace('.', ',')}\n`;
+                mensagem += `Status da venda: ${response.status_venda}`;
+                
+                if (response.todos_devolvidos) {
+                    mensagem += `\n\nTodos os produtos foram devolvidos. A venda agora tem status "Retorno".`;
+                }
+                
+                alert(mensagem);
+                
+                // Fechar modal
+                $('#modalDevolucao').modal('hide');
+                
+                // Recarregar dados
+                carregarProdutos(true);
+                carregarVendas();
+                
+                // Limpar variáveis
+                vendaDevolucao = null;
+                
+                mostrarAlerta('Devolução realizada com sucesso!', 'success');
+            } else {
+                alert('Erro ao realizar devolução: ' + (response.error || 'Erro desconhecido'));
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro na devolução:', xhr.responseText);
+            alert('Erro ao realizar devolução: ' + error);
+        }
+    });
+}
+
+function mostrarAlerta(mensagem, tipo) {
+    // Criar alerta Bootstrap
+    const alerta = $(`
+        <div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
+            ${mensagem}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    `);
+    
+    // Adicionar no topo da página
+    $('.row.mb-4').after(alerta);
+    
+    // Remover automaticamente após 5 segundos
+    setTimeout(function() {
+        alerta.alert('close');
     }, 5000);
 }
 </script>
